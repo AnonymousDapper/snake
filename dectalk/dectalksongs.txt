@@ -1,0 +1,53 @@
+## Star Wars Imperial March ##
+
+[:phoneme on][dah<600,20>dah<600,20>dah<600,20>dah<500,16>dah<130,23>dah<600,20>dah<500,16>dah<130,23>dah<600,20>]
+[dah<600,27>dah<600,27>dah<600,27>dah<500,28>dah<130,23>dah<600,19>dah<500,15>dah<130,23>dah<600,20>]
+[dah<600,32>dah<600,20>dah<600,32>dah<600,31>dah<100,30>dah<100,29>dah<100,28>dah<300,29>]
+[dah<150,18>dah<600,28>dah<600,27>dah<100,26>dah<100,25>dah<100,24>dah<100,26>]
+[dah<150,15>dah<600,20>dah<600,16>dah<150,23>dah<600,20>dah<600,20>dah<150,23>dah<600,27>]
+[dah<600,32>dah<600,20>dah<600,32>dah<600,31>dah<100,30>dah<100,29>dah<100,28>dah<300,29>]
+[dah<150,18>dah<600,28>dah<600,27>dah<100,26>dah<100,25>dah<100,24>dah<100,26>]
+[dah<150,15>dah<600,20>dah<600,16>dah<150,23>dah<600,20>dah<600,16>dah<150,23>dah<600,20>]
+
+## 2001 Space Oddysey ##
+
+[:phoneme arpabet on]
+[bah<1500,13>][bah<1500,20>][bah<1500,25>][bah<800,28>][bah<800,27>]
+[bah<200,8>][bah<200,13>][bah<200,8>][bah<200,13>][bah<200,8>][bah<200,13>] [bah<200,8>][bah<800,1>]
+[bah<1500,13>][bah<1500,20>][bah<1500,25>][bah<800,28>][bah<800,29>]
+[bah<200,8>][bah<200,13>][bah<200,8>][bah<200,13>][bah<200,8>][bah<200,13>] [bah<200,8>][bah<800,1>]
+[bah<1500,13>][bah<1500,20>][bah<1500,25>][bah<400,32>][bah<800,34>]
+[bah<400,22>][bah<400,24>][bah<1500,27>][bah<400,24>][bah<400,26>][bah<400,27>][bah<1600,29>]
+[bah<400,27>][bah<400,29>][bah<1600,31>][bah<1600,33>][bah<1600,34>]
+
+## Windows Startup ##
+
+[:phoneme arpabet on][dah<500,26>dah<180,14>dah<180,21>dah<500,19>dah<180,26>dah<500,21>]
+
+## GabeN ##
+
+[:phoneme arpabet on]
+[gey<800,13>ih<800,15>beh<800,17>n][_<800,17>][gey<800,17>ih<800,18>beh<800,20>n]
+[gey<400,20>ih<800,25>ih<400,24>ih<400,25>ih<800,20>ih<400,18>ih<800,17>ih<800,15>beh<800,13>n]
+
+## Skeletons ##
+
+[:phoneme arpabet on][:nb][:dv hs 100][:dv pr 1][:dv gv 20][:dv hs 40][:rate 160]
+[spuh<300,19>kiy<300,19>skeh<300,18>riy<300,18>skeh<300,11>lleh<175,14>tuh<200,11>ns]
+[seh<300,11>nd][shih<100,19>ver<500,19>sdaw<300,18>nyur<300,18>spay<300,11>n]
+[shriy<300,19>kiy<300,19>ng][skow<300,18>swih<300,18>ll][shah<300,11>kyur<300,14>sow<300,11>ll]
+[siy<300,14>llyur<300,16>duh<300,13>mtuh<300,14>nay<300,11>t]
+
+## Mario ##
+
+[:phoneme arpabet on]
+[:tone 165,200][:tone 165,400][:tone 165,400][:tone 131,200][:tone 165,400][:tone 196,800][:tone 98,1000]
+
+## Swear ##
+
+[:phoneme arpabet on]
+you're a,[:tone 1000,300] with,[:tone 1000,300] in your,[:tone 1000,300]
+
+## Low Drone ##
+
+[:phoneme arpabet on][dah<5000,50>]
