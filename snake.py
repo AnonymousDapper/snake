@@ -101,15 +101,15 @@ Invite                        => lets you add snake
 Info [chan/role/User]         => print info. "server" works too
 
 Docs <obj>                    => returns discord.py docs for obj
-Tag <g/l/d/a> <name> <data>   => manage tags
+Tag <g/l/d/a/e> <name> <data> => manage tags
 Game [gamename]               => makes snake play the game
-Xkcd                          => get a random xkcd comic
+Xkcd  [comicid]               => get an xkcd comic
 
 Uptime                        => see how long snake has been up
 Source                        => get snakes source code
 Playing                       => see the song thats playing
-
 List [setting]                => show value of setting(s)
+
 Meme <name> <text> <text>     => make a meme
 Chat <chan> <msg> [server]    => chat on different server
 Permissions                   => list snakes permissions
@@ -272,14 +272,13 @@ class Settings: # setting management
 	@classmethod
 	def get(self, key):
 		if key in self.settings_list:
-			value = self.settings_list[key]
-			return value
+			return self.settings_list[key]
 
 	@classmethod
 	def list(self):
 		settings = []
 		for key, value in self.settings_list.items():
-			settings.append("{}  =>  {}".format(key, convert(value)))
+			settings.append("'{}' is {}".format(key, self.convert(value)))
 		return settings
 
 class Seconds: # for datetime conversion
@@ -436,19 +435,17 @@ def get_elapsed_time(date_1, date_2):
 # upload a file to discord
 async def upload_file(url, file_name, channel : discord.Channel, note=""):
 	file_name = "cache/" + file_name
-	tmp_file = open(file_name, "wb")
 	with aiohttp.ClientSession() as session:
 		async with session.get(url) as response:
 			if response.status == 200:
-				data = await response.text()
+				data = await response.read()
+				with open(file_name, "wb") as tmp_file:
+					tmp_file.write(data)
 			pass
-	tmp_file.write(data)
-	tmp_file.close()
 	try:
-		await client.send_file(channel, file_name, filename=file_name, content=content)
+		await client.send_file(channel, file_name, filename=file_name, content=note)
 	except Exception as e:
 		print("{0.red}{1}: {2}{3.off}".format(Text, type(e).__name__, str(e), Attributes))
-	tmp.close()
 
 # manage saved videos
 def manage_saved_videos(action, yt_id="", video_name="", author=None):
@@ -611,7 +608,7 @@ async def leave_server(ctx, call, command, args):
 # rip
 async def snake_quit(ctx, call, command, args):
 	if ctx.author.id == my_id:
-		if Settings.get("enable_ai") == True:
+		if Settings.get("notify_on_exit") == True:
 			await client.send_message(ctx.channel, "rip {}".format(call))
 		log_db.commit()
 		await client.logout()
@@ -928,7 +925,8 @@ async def get_object_info(ctx, call, command, args):
 				))
 			else:
 				channel = discord.utils.get(ctx.server.channels, name=item, type=discord.ChannelType.voice)
-				if not channel == None:
+				role = discord.utils.get(ctx.server.roles, name=item)
+				if (not channel == None) and (role == None):
 					item = channel
 					await client.send_message(ctx.channel, voice_channel_info.format(
 						item,
@@ -938,6 +936,16 @@ async def get_object_info(ctx, call, command, args):
 						", ".join(map(lambda m: m.name, item.voice_members)) if len(item.voice_members) > 0 else "No one",
 						item.user_limit if item.user_limit > 0 else '∞'
 					))
+				elif (not role == None) and (channel == None):
+					item = role
+					await client.send_message(ctx.channel, role_info.format(
+						item,
+						"Yes" if item.hoist == True else "No",
+						str(item.colour).upper(),
+						"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
+					))
+				else:
+					await client.send_message(ctx.channel, "Unable to retrieve information, '{}' matches multiple objects.".format(item))
 
 #get docs for soandso
 async def get_object_docs(ctx, call, command, args):
@@ -995,6 +1003,131 @@ async def manage_user_tags(ctx, call, command, args):
 			else:
 				await client.send_message(ctx.channel, "Tag `{}` does not exist or is not owner by you".format(name))
 
+# whats he playing
+async def change_snake_game(ctx, call, command, args):
+	game_name = args[0] if len(args) > 0 else None
+	game = None
+	if not game_name == None:
+		game = discord.Game(name=game_name, url=game_name, type=1)
+	await client.change_status(game=game, idle=False)
+
+# xkcd, yey
+async def get_xkcd_comic(ctx, call, command, args):
+	xkcd_id = args[0] if len(args) > 0 else None
+	await client.send_typing(ctx.channel)
+	url, data = '',''
+	if xkcd_id == None:
+		url = xkcd_rand_comic
+	else:
+		url = "http://xkcd.com/{}".format(xkcd_id)
+	with aiohttp.ClientSession() as session:
+		async with session.get(url) as response:
+			if response.status == 200:
+				data = await response.text()
+			pass
+	xkcd_match = re.search(r'<div id="ctitle">(?P<title>[\w ]+).*Permanent\slink\sto\sthis\scomic:\s(?P<link>[^<]+).*Image\sURL\s\(for\shotlinking\/embedding\):\s(?P<url>[^ ]+)<div', data, re.S)
+	title, url, link = xkcd_match.group("title"), xkcd_match.group("url")[:-1], xkcd_match.group("link")
+	await upload_file(url, "xkcd/" + url[28:], ctx.channel, "{} (<{}>)".format(title, link))
+
+# uptime
+async def get_uptime(ctx, call, command, args):
+	elapsed_time = get_elapsed_time(client.start_time, datetime.utcnow() + utc_offset)
+	formatted_time = client.start_time.strftime(time_format)
+	await client.send_message(ctx.channel, "```xl\nSnake has been running for {} ({})\n```".format(elapsed_time, formatted_time))
+
+# github :)
+async def get_source(ctx, call, command, args):
+	await client.send_message(ctx.channel, "https://github.com/TickerOfTime/snake")
+
+# what song is playing
+async def get_playing(ctx, call, command, args):
+	voice_client = client.voice_client_in(ctx.server)
+	if not voice_client == None:
+		channel = voice_channels[voice_client]
+		if "player" in channel:
+			if hasattr(channel["player"], "yt") == True:
+				await client.send_message(ctx.channel, ytplayer_info.format(channel["player"], voice_client.channel))
+				return
+	await client.send_message(ctx.channel, "```xl\nNothing is playing right now\n```")
+
+# list settings
+async def list_settings(ctx, call, command, args):
+	option = args[0] if len(args) > 0 else None
+	setting = Settings.get(option)
+	if setting == None:
+		await client.send_message(ctx.channel, "```xl\n{}\n```".format("\n".join(Settings.list())))
+	else:
+		await client.send_message(ctx.channel, "```xl\n'{}' is '{}'\n```".format(option, "on" if setting == True else "off"))
+
+# memes
+async def make_meme(ctx, call, command, args):
+	meme_name = str(args[0] if len(args) > 0 else None)
+	if meme_name.lower() in meme_list:
+		text_1 = args[1] if len(args) > 1 else None
+		text_2 = args[2] if len(args) > 2 else None
+		if (not text_1 == None) and (not text_2 == None):
+			url = "http://memegen.link/{}/{}/{}.jpg".format(meme_name.lower(), quote(text_1.replace(" ", "-")), quote(text_2.replace(" ", "-")))
+			await upload_file(url, "{}.jpg".format(meme_name.lower()), ctx.channel)
+	elif meme_name.lower() in ["list", 'l']:
+		result = []
+		for K, V in meme_list.items():
+			result.append("{} - {}".format(K, V))
+			if len(result) > 11:
+				await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
+				result = []
+		await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
+
+# cross server chat
+async def cross_server_chat(ctx, call, command, args):
+	channel_name = args[0] if len(args) > 0 else None
+	message_to_send = args[1] if len(args) > 1 else None
+	server_name = args[2] if len(args) > 2 else None
+	if (not channel_name == None) and (not message_to_send == None):
+		if not server_name == None:
+			channel = discord.utils.get(client.get_all_channels(), server__name=server_name, name=channel_name)
+		else:
+			channel = discord.utils.get(client.get_all_channels(), name=channel_name)
+		if channel == None and server_name == None:
+			await client.send_message(ctx.channel, "```diff\n- Channel '{}' not found\n```".format(channel_name))
+			return
+		elif (channel == None) and (not server_name == None):
+			await client.send_message(ctx.channel, "```diff\n- Channel '{}' on '{}' not found\n```".format(channel_name, server_name))
+			return
+		try:
+			await client.send_message(channel,"{} - #{}\n**Message from {}#{}:**\n\n{}".format(ctx.server.name,ctx.channel.name,ctx.author.display_name,ctx.author.discriminator,message_to_send))
+		except Exception as e:
+			await client.send_message(ctx.channel,"```py\n{}: {}\n```".format(type(e).__name__,str(e)))
+
+# get a list of permissions
+async def get_permissions(ctx, call, command, args):
+	permission_list = ctx.channel.permissions_for(ctx.server.me)
+	fmt = lambda x: "yes" if x == True else "no"
+	await client.send_message(ctx.channel,permission_info_str.format(
+		fmt(permission_list.create_instant_invite),
+		fmt(permission_list.kick_members),
+		fmt(permission_list.ban_members),
+		fmt(permission_list.manage_channels),
+		fmt(permission_list.manage_server),
+		fmt(permission_list.read_messages),
+		fmt(permission_list.send_messages),
+		fmt(permission_list.send_tts_messages),
+		fmt(permission_list.manage_messages),
+		fmt(permission_list.embed_links),
+		fmt(permission_list.attach_files),
+		fmt(permission_list.read_message_history),
+		fmt(permission_list.mention_everyone),
+		fmt(permission_list.connect),
+		fmt(permission_list.speak),
+		fmt(permission_list.mute_members),
+		fmt(permission_list.deafen_members),
+		fmt(permission_list.move_members),
+		fmt(permission_list.use_voice_activation),
+		fmt(permission_list.change_nicknames),
+		fmt(permission_list.manage_nicknames),
+		fmt(permission_list.manage_roles),
+		"is" if permission_list.administrator == True else "is not"
+	))
+
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
@@ -1042,6 +1175,15 @@ functions = {
 	"info": get_object_info,
 	"docs": get_object_docs,
 	"tag": manage_user_tags,
+	"game":change_snake_game,
+	"xkcd":get_xkcd_comic,
+	"uptime": get_uptime,
+	"source": get_source,
+	"playing": get_playing,
+	"list": list_settings,
+	"meme": make_meme,
+	"chat": cross_server_chat,
+	"permissions": get_permissions,
 
 
 	"test": test
