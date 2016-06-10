@@ -129,7 +129,7 @@ WHOIS Bot
 	  ID => {0.id}
   Avatar => {0.avatar_url}
 	Nick => {0.display_name}#{0.discriminator}
- Playing => {5}
+ Playing => {7}
  Created => {1}
   Uptime => {2}
 Channels => {3}
@@ -747,7 +747,7 @@ async def manage_user_videos(ctx, call, command, args):
 			manage_saved_videos("save", yt_id, yt_name, ctx.author)
 	elif option.lower() in ["del", "delete", 'd']:
 		if not yt_name == None:
-			manage_saved_videos("remove", None, yt_name)
+			manage_saved_videos("remove", None, yt_name, ctx.author)
 	elif option.lower() in ['l', "ls", "list"]:
 		result = []
 		for video in manage_saved_videos("list"):
@@ -899,10 +899,20 @@ async def get_object_info(ctx, call, command, args):
 				"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
 			))
 		elif isinstance(item, discord.Channel) == True:
-			await client.send_message(ctx.channel, channel_info.format(
-				item,
-				"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
-			))
+			if item.type == discord.ChannelType.text:
+				await client.send_message(ctx.channel, text_channel_info.format(
+					item,
+					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
+				))
+			else:
+				await client.send_message(ctx.channel, voice_channel_info.format(
+					item,
+					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
+					len(item.voice_members),
+					item.bitrate // 1000,
+					", ".join(map(lambda m: m.name, item.voice_members)) if len(item.voice_members) > 0 else "No one",
+					item.user_limit if item.user_limit > 0 else '∞'
+				))
 		else:
 			item = str(item)
 			voice_channel = discord.utils.get(ctx.server.channels, name=item)
