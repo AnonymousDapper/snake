@@ -1102,7 +1102,7 @@ async def cross_server_chat(ctx, call, command, args):
 async def get_permissions(ctx, call, command, args):
 	permission_list = ctx.channel.permissions_for(ctx.server.me)
 	fmt = lambda x: "yes" if x == True else "no"
-	await client.send_message(ctx.channel,permission_info_str.format(
+	await client.send_message(ctx.channel,permission_info.format(
 		fmt(permission_list.create_instant_invite),
 		fmt(permission_list.kick_members),
 		fmt(permission_list.ban_members),
