@@ -254,7 +254,7 @@ opus_loaded = discord.opus.is_loaded()
 
 class Settings: # setting management
 	settings_list = {
-		"enable_ai": False,
+		"enable_ai": True,
 		"notify_on_exit": True,
 		"notify_channel": False
 	}
@@ -368,21 +368,21 @@ async def log_message(message : discord.Message):
 	log_db_cursor.execute("INSERT INTO chat_logs VALUES (?,?,?,?,?,?,?)", message_data)
 
 # talk to pandorabots api
-async def talk_pandora(user : discord.Member, text):
+async def talk_pandora(user : discord.Member, message):
 	temp_db_cursor.execute("SELECT cust_id FROM pb_ids WHERE user_id=?", (user.id,))
 	cust_id = temp_db_cursor.fetchone()
 	with aiohttp.ClientSession() as session:
 		if not cust_id == None:
-			async with session.post("http://www.pandorabots.com/pandora/talk-xml", {"botid": pb_bot_id, "input": message, "custid": cuts_id}) as response:
+			async with session.post("http://www.pandorabots.com/pandora/talk-xml", data={"botid": pb_bot_id, "input": message, "custid": cust_id}) as response:
 				if response.status == 200:
 					pb_response = await response.text()
 				pass
 		else:
-			async with session.post("http://www.pandorabots.com/pandora/talk-xml", {"botid": pb_bot_id, "input": message}) as response:
+			async with session.post("http://www.pandorabots.com/pandora/talk-xml", data={"botid": pb_bot_id, "input": message}) as response:
 				if response.status == 200:
 					pb_response = await response.text()
 				pass
-	response_data = re.search(r'<result status="(?P<status>\d*)"\sbotid="(?P<botid>\w+)"\scustid="(?P<custid>\w+)">\s*<input>[\w ]+</input>\s*<that>(?P<response>.*)</that>', str(pb_response.content), re.I)
+	response_data = re.search(r'<result status="(?P<status>\d*)"\sbotid="(?P<botid>\w+)"\scustid="(?P<custid>\w+)">\s*<input>[\w ]+</input>\s*<that>(?P<response>.*)</that>', str(pb_response), re.I)
 	if cust_id == None:
 		temp_db_cursor.execute("INSERT INTO pb_ids VALUES(?,?)", (user.id, response_data.group("custid")))
 		temp_db.commit()
@@ -1238,7 +1238,7 @@ async def on_message(message):
 	if message.author == client.user or message.author.bot == True:
 		return
 	await log_message(message)
-	if message.content.lower().startswith(("snake", "snek", "snk")):
+	if message.content.lower().startswith("snake"):
 		args = parse_commands(message.content)
 		for user_mention in message.mentions:
 			mention_text = "<@!{}>".format(user_mention.id)
