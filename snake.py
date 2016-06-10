@@ -645,8 +645,8 @@ async def debug_code(ctx, call, command, args):
 
 # clear snakes messages
 async def remove_self_messages(ctx, call, command, args):
-	count = args[0] if len(args) > 0 else None
-	if (is_admin(ctx.author) == True) and (not count == None):
+	count = args[0] if len(args) > 0 else 1
+	if (is_admin(ctx.author) == True):
 		messages_removed = 0
 		count = int(count)
 		async for message in client.logs_from(ctx.channel):
