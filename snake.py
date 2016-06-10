@@ -98,15 +98,14 @@ Summon                        => bring snake to your voice channel
 Help                          => displays this help page
 Insult [User]+                => insult people
 Invite                        => lets you add snake
-Whois [chan/role/User]        => print info. "server" works too
+Info [chan/role/User]         => print info. "server" works too
 
 Docs <obj>                    => returns discord.py docs for obj
-Notes <g/l/d/a> <name> <data> => manage notes
+Tag <g/l/d/a> <name> <data>   => manage tags
 Game [gamename]               => makes snake play the game
 Xkcd                          => get a random xkcd comic
 
 Uptime                        => see how long snake has been up
-Info                          => view info about snake
 Source                        => get snakes source code
 Playing                       => see the song thats playing
 
@@ -632,7 +631,7 @@ async def debug_code(ctx, call, command, args):
 			if asyncio.iscoroutine(result):
 				result = await result
 
-			result = '' if result == None else result
+			result = str(result)
 			cutoff = [result[x:x + 1800] for x in range(0, len(result), 1800)]
 
 			if len(cutoff) > 1:
@@ -940,11 +939,79 @@ async def get_object_info(ctx, call, command, args):
 						item.user_limit if item.user_limit > 0 else '∞'
 					))
 
+#get docs for soandso
+async def get_object_docs(ctx, call, command, args):
+	item = args[0] if len(args) > 0 else None
+	if not item == None:
+		item = str(item).lower()
+		await client.send_message(ctx.channel, "{}discord.{}".format(base_docs_url, item.capitalize()))
+	else:
+		await client.send_message(ctx.channel, base_docs_url)
+
+#manage tags, yay
+async def manage_user_tags(ctx, call, command, args):
+	method = str(args[0] if len(args) > 0 else None).lower()
+	name = args[1] if len(args) > 1 else None
+	content = args[2] if len(args) > 2 else None
+	if method in ["list", 'l']:
+		log_db_cursor.execute("SELECT * FROM user_tags")
+		tag_list = []
+		for tag in log_db_cursor.fetchall():
+			tag_list.append("^'" + tag[0] + "'" if tag[2] == ctx.author.id else "'" + tag[0] + "'")
+		await client.send_message(ctx.channel, "**All Saved Tags**:\n```xl\n{}\n```".format(", ".join(tag_list)))
+	elif method in ["get", 'g']:
+		if not name == None:
+			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=?", (name, ))
+			tag = log_db_cursor.fetchone()
+			if not tag == None:
+				await client.send_message(ctx.channel, "**{}** ({}):\n\n{}".format(tag[0], tag[3], tag[1]))
+			else:
+				await client.send_message(ctx.channel, "Tag `{}` does not exist".format(name))
+	elif method in ["add", 'a']:
+		if (not name == None) and (not content == None):
+			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=?", (name, ))
+			if log_db_cursor.fetchone() == None:
+				log_db_cursor.execute("INSERT INTO user_tags VALUES (?,?,?,?)", (name, content, ctx.author.id, "{}#{}".format(ctx.author.name, ctx.author.discriminator)))
+				log_db.commit()
+				await client.send_message(ctx.channel, "Tag `{}` created successfully".format(name))
+			else:
+				await client.send_message(ctx.channel, "Tag `{}` already exists".format(name))
+	elif method in ["edit", 'e']:
+		if (not name == None) and (not content == None):
+			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=? and tag_owner=?", (name, ctx.author.id))
+			if not log_db_cursor.fetchone() == None:
+				log_db_cursor.execute("UPDATE user_tags SET tag_name=?,tag_content=?,tag_owner=?,tag_owner_name=? WHERE tag_name=?", (name, content, ctx.author.id, "{}#{}".format(ctx.author.name, ctx.author.discriminator), name))
+				log_db.commit()
+				await client.send_message(ctx.channel, "Tag `{}` edited successfully".format(name))
+			else:
+				await client.send_message(ctx.channel, "Tag `{}` does not exist or is not owner by you".format(name))
+	elif method in ["del", "delete", 'd']:
+		if not name == None:
+			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=? and tag_owner=?", (name, ctx.author.id))
+			if not log_db_cursor.fetchone() == None:
+				log_db_cursor.execute("DELETE FROM user_tags WHERE tag_name=?", (name, ))
+				log_db.commit()
+				await client.send_message(ctx.channel, "Tag `{}` deleted successfully".format(name))
+			else:
+				await client.send_message(ctx.channel, "Tag `{}` does not exist or is not owner by you".format(name))
+
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
 
 ## End commands
+
+"""
+```md
+[MSG SEND/EDIT][50 / 10 s ]
+[MSG SEND/EDIT][ 5 /  5 s  / guild]
+[   MSG DELETE][ 5 /  1 s  / guild]
+[ROLE EDIT/ADD][10 / 10 s  / guild]
+[     NICKNAME][ 1 /  1 s ]
+[         NAME][ 2 /  1 hr]
+[       STATUS][ 5 /  1 mn]
+```
+"""
 
 """ #			#
 	#			#
@@ -973,6 +1040,8 @@ functions = {
 	"insult": get_insult,
 	"invite": get_oauth_link,
 	"info": get_object_info,
+	"docs": get_object_docs,
+	"tag": manage_user_tags,
 
 
 	"test": test
