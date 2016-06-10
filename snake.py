@@ -129,6 +129,7 @@ WHOIS Bot
 	  ID => {0.id}
   Avatar => {0.avatar_url}
 	Nick => {0.display_name}#{0.discriminator}
+ Playing => {5}
  Created => {1}
   Uptime => {2}
 Channels => {3}
@@ -886,7 +887,8 @@ async def get_object_info(ctx, call, command, args):
 					"{} public channels ({} text, {} voice), {} private channels".format(channel_count + voice_count, channel_count, voice_count, private_count),
 					"{} servers ({})".format(server_count, "'{}'".format("', '".join(list(map(str, client.servers))))),
 					".".join(list(map(str,list(discord.version_info)[:3]))),
-					".".join(list(map(str,list(sys.version_info)[:3])))
+					".".join(list(map(str,list(sys.version_info)[:3]))),
+					"" if ctx.server.me.game == None else ctx.server.me.game.name
 				))
 
 		elif isinstance(item, discord.Role) == True:
@@ -921,7 +923,8 @@ async def get_object_info(ctx, call, command, args):
 					"{} public channels ({} text, {} voice), {} private channels".format(channel_count + voice_count, channel_count, voice_count, private_count),
 					"{} servers ({})".format(server_count, ", ".join(list(map(str, client.servers)))),
 					".".join(list(map(str,list(discord.version_info)[:3]))),
-					".".join(list(map(str,list(sys.version_info)[:3])))
+					".".join(list(map(str,list(sys.version_info)[:3]))),
+					"" if ctx.server.me.game == None else ctx.server.me.game.name
 				))
 			else:
 				channel = discord.utils.get(ctx.server.channels, name=item, type=discord.ChannelType.voice)
