@@ -88,7 +88,7 @@ Debug ** <expression>         => execute a statement
 Clear * <count>               => removes snakes messages
 Set * <settingname> <option>  => change settings
 Playx * <j/l/m/s/p/r/v> [opt] => voice control
-Purge * <User> <count>        => remove someones messages
+Purge * <User/all> <count>    => remove someones messages
 
 Video <s/l/d> [name] [id]     => manage stored videos
 Play  <url/id/sid> [channel]  => play a video in the channel
@@ -592,19 +592,20 @@ async def eval_code(ctx, call, command, args):
 async def leave_server(ctx, call, command, args):
 	if ctx.author.id in owner_ids:
 		server_name = args[0] if len(args) > 0 else None
-		server = discord.utils.get(client.servers, name=server_name)
-		if not server == None:
-			await client.leave_server(server)
-			global channel_count, voice_count, server_count
-			for channel in server.channels:
-				if channel.type == discord.ChannelType.text:
-					channel_count -= 1
-				elif channel.type == discord.ChannelType.voice:
-					voice_count -= 1
-			server_count -= 1
-			await client.send_message(ctx.channel, "```xl\nSuccessfully left '{}'\n```".format(server.name))
-		else:
-			await client.send_message(ctx.channel, "```xl\nCannot find '{}'\n```".format(server_name))
+		if not server_name == None:
+			server = discord.utils.get(client.servers, name=server_name)
+			if not server == None:
+				await client.leave_server(server)
+				global channel_count, voice_count, server_count
+				for channel in server.channels:
+					if channel.type == discord.ChannelType.text:
+						channel_count -= 1
+					elif channel.type == discord.ChannelType.voice:
+						voice_count -= 1
+				server_count -= 1
+				await client.send_message(ctx.channel, "```xl\nSuccessfully left '{}'\n```".format(server.name))
+			else:
+				await client.send_message(ctx.channel, "```xl\nCannot find '{}'\n```".format(server_name))
 
 # rip
 async def snake_quit(ctx, call, command, args):
@@ -722,20 +723,36 @@ async def manage_players(ctx, call, command, args):
 async def purge_messages(ctx, call, command, args):
 	user = args[0] if len(args) > 0 else None
 	count = args[1] if len(args) > 1 else None
-	if is_admin(ctx.author) == True and (not user == None) and (not count == None):
-		if not isinstance(user, discord.Member) == True:
-			user = find_user(ctx.server, user)
-		messages_removed = 0
-		count = int(count)
-		try:
-			async for message in client.logs_from(ctx.channel):
-				if message.author == user:
-					if messages_removed < count:
-						await client.delete_message(message)
-						messages_removed += 1
-						time.sleep(.21)
-		except Exception as e:
-			await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+	if is_admin(ctx.author) == True:
+		if (not user == None) and (not count == None):
+			if str(user).lower() == "all":
+				messages_removed = 0
+				count = int(count)
+				try:
+					async for message in client.logs_from(ctx.channel):
+						if messages_removed < count:
+							await client.delete_message(message)
+							messages_removed += 1
+							time.sleep(.21)
+				except Exception as e:
+					await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+				return
+
+			if not isinstance(user, discord.Member) == True:
+				user = find_user(ctx.server, user)
+			messages_removed = 0
+			count = int(count)
+			try:
+				async for message in client.logs_from(ctx.channel):
+					if message.author == user:
+						if messages_removed < count:
+							await client.delete_message(message)
+							messages_removed += 1
+							time.sleep(.21)
+			except Exception as e:
+				await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+
+
 
 # manage saved videos
 async def manage_user_videos(ctx, call, command, args):
