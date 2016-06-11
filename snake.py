@@ -874,7 +874,7 @@ async def get_insult(ctx, call, command, args):
 
 # get oath url
 async def get_oauth_link(ctx, call, command, args):
-	permissions = discord.Permissions(104066057)
+	permissions = discord.Permissions(70380553 )
 	oauth_url = discord.utils.oauth_url("181584771510566922", permissions)
 	await client.send_message(ctx.author, "Click the link below to add snake to your server\n{}".format(oauth_url))
 
