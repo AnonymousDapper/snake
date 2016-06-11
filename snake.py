@@ -935,10 +935,16 @@ async def get_object_info(ctx, call, command, args):
 			voice_channel = discord.utils.get(ctx.server.channels, name=item)
 			if item.lower() == "server":
 				item = ctx.server
+				server_channel_count, server_voice_count = 0,0
+				for channel in item.channels:
+					if channel.type == discord.ChannelType.voice:
+						server_voice_count += 1
+					elif channel.type == discord.ChannelType.text:
+						server_channel_count +=1
 				await client.send_message(ctx.channel, server_info.format(
 					item,
 					"{} member{}".format(len(item.members), 's' if len(item.members) > 1 or len(item.members) == 0 else ""),
-					"{} text channel{}, {} voice channel{}".format(channel_count, 's' if channel_count > 1 or channel_count == 0 else "", voice_count, 's' if voice_count > 1 or voice_count == 0 else ""),
+					"{} text channel{}, {} voice channel{}".format(server_channel_count, 's' if server_channel_count > 1 or server_channel_count == 0 else "", server_voice_count, 's' if server_voice_count > 1 or server_voice_count == 0 else ""),
 					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
 					", ".join(map(lambda x:str(x)[1::] if str(x).startswith("@") else str(x), item.roles))
 				))
