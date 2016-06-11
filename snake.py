@@ -1098,6 +1098,8 @@ async def make_meme(ctx, call, command, args):
 		if (not text_1 == None) and (not text_2 == None):
 			url = "http://memegen.link/{}/{}/{}.jpg".format(meme_name.lower(), quote(text_1.replace(" ", "-")), quote(text_2.replace(" ", "-")))
 			await upload_file(url, "{}.jpg".format(meme_name.lower()), ctx.channel)
+		elif (text_1 == None) or (text_2 == None):
+			await client.send_message(ctx.channel, "```diff\n- You need two text snippets to make a meme\n```")
 	elif meme_name.lower() in ["list", 'l']:
 		result = []
 		for K, V in meme_list.items():
