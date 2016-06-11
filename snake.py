@@ -944,7 +944,7 @@ async def get_object_info(ctx, call, command, args):
 				await client.send_message(ctx.channel, server_info.format(
 					item,
 					"{} member{}".format(len(item.members), 's' if len(item.members) > 1 or len(item.members) == 0 else ""),
-					"{} text channel{}, {} voice channel{}".format(server_channel_count, 's' if server_channel_count > 1 or server_channel_count == 0 else "", server_voice_count, 's' if server_voice_count > 1 or server_voice_count == 0 else ""),
+					"{} text channel{}, {} voice channel{} ({} total)".format(server_channel_count, 's' if server_channel_count > 1 or server_channel_count == 0 else "", server_voice_count, 's' if server_voice_count > 1 or server_voice_count == 0 else "", server_channel_count + server_voice_count),
 					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
 					", ".join(map(lambda x:str(x)[1::] if str(x).startswith("@") else str(x), item.roles))
 				))
