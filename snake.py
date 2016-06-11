@@ -1297,8 +1297,8 @@ async def on_message(message):
 		command = args[1] if len(args) > 1 else None
 		command_args = [] if len(args) < 3 else args[2:]
 		if not command == None:
-			if command.lower() in functions:
-				await functions[command.lower()](message, call, command, command_args)
+			if str(command).lower() in functions:
+				await functions[str(command).lower()](message, call, str(command), command_args)
 			elif Settings.get("enable_ai") == True:
 				response = await talk_pandora(message.author, " ".join(args[1:]))
 				if not response == None:
