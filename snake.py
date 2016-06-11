@@ -246,7 +246,7 @@ voice_count, private_count, server_count, channel_count = 0,0,0,0
 
 time_format = "%a %B %d, %Y, %H:%M:%S CST" # time format str
 pb_bot_id = "b0dafd24ee35a477" # PandoraBots Chomsky
-my_id = "163521874872107009" # my userid
+owner_ids = ["163521874872107009", "190966952649293824"] # my userid
 
 xkcd_rand_comic = "http://c.xkcd.com/random/comic/" # random xkcd
 
@@ -542,7 +542,7 @@ def expand_video_url(text):
 async def manage_admins(ctx, call, command, args):
 	user = args[1] if len(args) > 1 else None
 	method = args[0] if len(args) > 0 else "None"
-	if ctx.author.id == my_id:
+	if ctx.author.id in owner_ids:
 		if not isinstance(user, discord.Member) == True: # are we dealing with a string?
 			user = find_user(ctx.server, user)
 		if method.lower() in ["remove", 'r']:
@@ -565,7 +565,7 @@ async def manage_admins(ctx, call, command, args):
 # eval code yey
 async def eval_code(ctx, call, command, args):
 	code = args[0] if len(args) > 0 else None
-	if ctx.author.id == my_id:
+	if ctx.author.id in owner_ids:
 		if not code == None:
 			try:
 				with stdoutIO() as s:
@@ -590,7 +590,7 @@ async def eval_code(ctx, call, command, args):
 
 # leave a specific server
 async def leave_server(ctx, call, command, args):
-	if ctx.author.id == my_id:
+	if ctx.author.id in owner_ids:
 		server_name = args[0] if len(args) > 0 else None
 		server = discord.utils.get(client.servers, name=server_name)
 		if not server == None:
@@ -608,7 +608,7 @@ async def leave_server(ctx, call, command, args):
 
 # rip
 async def snake_quit(ctx, call, command, args):
-	if ctx.author.id == my_id:
+	if ctx.author.id in owner_ids:
 		if Settings.get("notify_on_exit") == True:
 			await client.send_message(ctx.channel, "rip {}".format(call))
 		log_db.commit()
@@ -616,7 +616,7 @@ async def snake_quit(ctx, call, command, args):
 
 # debug one expression
 async def debug_code(ctx, call, command, args):
-	if ctx.author.id == my_id:
+	if ctx.author.id in owner_ids:
 		code = args[0] if len(args) > 0 else None
 		if not code == None:
 			result = None
@@ -1021,7 +1021,7 @@ async def change_snake_game(ctx, call, command, args):
 	game_name = args[0] if len(args) > 0 else None
 	game = None
 	if not game_name == None:
-		game = discord.Game(name=game_name, url=game_name, type=1)
+		game = discord.Game(name=game_name, url="http://twitch.tv/logout", type=1)
 	await client.change_status(game=game, idle=False)
 
 # xkcd, yey
@@ -1223,6 +1223,7 @@ async def on_ready():
 	print("\n\n")
 	for channel in client.private_channels:
 		print_private_channel(channel)
+	await client.change_status(game=discord.Game(name="ಠ_ಠ", url="http://twitch.tv/logout", type=1), idle=False)
 
 @client.event
 async def on_server_join(server):
