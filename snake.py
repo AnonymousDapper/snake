@@ -255,7 +255,7 @@ opus_loaded = discord.opus.is_loaded()
 
 class Settings: # setting management
 	settings_list = {
-		"enable_ai": True,
+		"enable_ai": False,
 		"notify_on_exit": True,
 		"notify_channel": False
 	}
@@ -383,7 +383,7 @@ async def talk_pandora(user : discord.Member, message):
 				if response.status == 200:
 					pb_response = await response.text()
 				pass
-	response_data = re.search(r'<result status="(?P<status>\d*)"\sbotid="(?P<botid>\w+)"\scustid="(?P<custid>\w+)">\s*<input>[\w ]+</input>\s*<that>(?P<response>.*)</that>', str(pb_response), re.I)
+	response_data = re.search(r'<result status="(?P<status>\d*)"\sbotid="(?P<botid>\w+)"\scustid="(?P<custid>\w+)">\s*<input>[\w ]+</input>\s*<that>(?P<response>.*)</that>', html.unescape(str(pb_response)), re.I)
 	if cust_id == None:
 		temp_db_cursor.execute("INSERT INTO pb_ids VALUES(?,?)", (user.id, response_data.group("custid")))
 		temp_db.commit()
