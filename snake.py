@@ -314,7 +314,7 @@ for tag in log_db_cursor.fetchall():
 log_db_cursor.execute("SELECT * FROM user_tracking")
 
 for user_info in log_db_cursor.fetchall():
-	user_tracking[user_info[0]] = {"user_id": user_info[0], "server_id": user_info[1], "channel_ids": user_info[2].split(","), "whole_server": True if user_info[3] == "yes" else False}
+	user_tracking[user_info[0]] = {user_info[1]: {"user_id": user_info[0], "server_id": user_info[1], "channel_ids": user_info[2].split(","), "whole_server": True if user_info[3] == "yes" else False}}
 
 
 
@@ -520,39 +520,54 @@ def expand_video_url(text):
 	return url
 
 # is a user tracking mentions?
-def is_user_tracked(channel : discord.Channel, user : discord.Member):
+def is_user_tracked(channel : discord.Channel, user : discord.Member, verbose=False):
 	if user.id in user_tracking:
-		user_track = user_tracking[user.id]
-		return [user_track["whole_server"] == True or channel.id in user_track["channel_ids"], user_track["whole_server"]]
-
+		user_tracker = user_tracking[user.id]
+		if channel.server.id in user_tracker:
+			user_info = user_tracker[channel.server.id]
+			if verbose == False:
+				return user_info["whole_server"] or channel.id in user_info["channel_ids"]
+			else:
+				return [user_info["whole_server"] or channel.id in user_info["channel_ids"], user_info["whole_server"]]
+		else:
+			return False if verbose == False else [False, False]
+	else:
+		return False if verbose == False else [False, False]
 
 # change user tracking
-def set_user_track(channel : discord.Channel, user : discord.Member, track, whole_server=None):
-	channel_ids, sql, server_id = None, None, None
+def set_user_track(channel : discord.Channel, user : discord.Member, mentions_tracked, whole_server=None):
+	sql = ''
 	if user.id in user_tracking:
-		channel_ids = user_tracking[user.id]["channel_ids"]
-		server_id = user_tracking[user.id]["server_id"]
-		if track == True:
-			if not channel.id in channel_ids:
-				channel_ids = channel_ids + [channel.id]
+		user_tracker = user_tracking[user.id]		
+		if channel.server.id in user_tracker:
+			user_info = user_tracker[channel.server.id]
+			if channel.id in user_info["channel_ids"]:
+				if mentions_tracked == False:
+					user_tracking[user.id][channel.server.id]["channel_ids"].remove(channel.id)
+					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
+				else:
+					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
+			else:
+				if mentions_tracked == True:
+					user_tracking[user.id][channel.server.id]["channel_ids"].append(channel.id)
+					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
+				else:
+					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
+			
+			sql = 0
 		else:
-			if channel.id in channel_ids:
-				channel_ids.remove(channel.id)
-		if whole_server == None:
-			whole_server = user_tracking[user.id]["whole_server"]
+			user_info = {"user_id": user.id, "server_id": channel.server.id, "channel_ids": [channel.id] if mentions_tracked == True else [], "whole_server": whole_server if not whole_server == None else False}
+			user_tracking[user.id][channel.server.id] = user_info
+			sql = 1
 	else:
 		user_tracking[user.id] = {}
-		channel_ids = [channel.id]
-
-	if server_id == channel.server.id:
-		sql = "UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=?"
+		user_info = {"user_id": user.id, "server_id": channel.server.id, "channel_ids": [channel.id] if mentions_tracked == True else [], "whole_server": whole_server if not whole_server == None else False}
+		user_tracking[user.id][channel.server.id] = user_info
+		sql = 1
+	if sql == 1:
+		log_db_cursor.execute("INSERT INTO user_tracking VALUES (?,?,?,?)", (user.id, channel.server.id, ",".join(user_tracking[user.id][channel.server.id]["channel_ids"]), "yes" if whole_server == True else "no"))
 	else:
-		sql = "INSERT INTO user_tracking VALUES (?,?,?,?)"
-
-	user_tracking[user.id]["channel_ids"] = channel_ids
-	user_tracking[user.id]["whole_server"] = whole_server
-
-	log_db_cursor.execute(sql, (user.id, channel.server.id, ",".join(channel_ids), "yes" if whole_server == True else "no"))
+		log_db_cursor.execute("UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=? WHERE server_id=?", (user.id, channel.server.id, ",".join(user_tracking[user.id][channel.server.id]["channel_ids"]), "yes" if whole_server == True else "no", channel.server.id))
 
 # End helper funcs
 
@@ -1153,7 +1168,7 @@ async def make_meme(ctx, call, command, args):
 			result.append("{} - {}".format(K, V))
 			if len(result) > 11:
 				await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
-				result = []
+				result.clear()
 		await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
 
 # cross server chat
@@ -1225,8 +1240,8 @@ async def manage_user_tracking(ctx, call, command, args):
 			set_user_track(ctx.channel, ctx.author, False, whole_server)
 			await client.send_message(ctx.channel, ":ballot_box_with_check: You will not be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
 		elif track in ["status", 's', 'c', "check"]:
-			track_status = is_user_tracked(ctx.channel, ctx.author)
-			await client.send_message(ctx.chanel, ":{}: You will {} messaged if you are mentioned in this {}".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
+			status = is_user_tracked(ctx.channel, ctx.author, True)
+			await client.send_message(ctx.channel, ":{}: You will {} messaged if you are mentioned in this {} while offline".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
@@ -1367,7 +1382,7 @@ async def on_message(message):
 					await client.send_message(message.channel, response)
 	else:
 		for user in message.mentions:
-			if is_user_tracked(message.channel, user)[0] == True:
+			if is_user_tracked(message.channel, user) == True:
 				if user.status in [discord.Status.offline, discord.Status.idle]:
 					await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name, message.author.discriminator, message.clean_content))
 					time.sleep(0.21)
