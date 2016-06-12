@@ -533,7 +533,7 @@ def set_user_track(channel : discord.Channel, user : discord.Member, track, whol
 		channel_ids = user_tracking[user.id]["channel_ids"]
 		if track == True:
 			if not channel.id in channel_ids:
-				channel_ids = channel_ids + channel.id
+				channel_ids = channel_ids + [channel.id]
 		else:
 			if channel.id in channel_ids:
 				channel_ids.remove(channel.id)
