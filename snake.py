@@ -523,7 +523,7 @@ def expand_video_url(text):
 def is_user_tracked(channel : discord.Channel, user : discord.Member):
 	if user.id in user_tracking:
 		user_track = user_tracking[user.id]
-		return user_track["whole_server"] == True or channel.id in user_track["channel_ids"]
+		return [user_track["whole_server"] == True or channel.id in user_track["channel_ids"], user_track["whole_server"]]
 
 
 # change user tracking
@@ -544,7 +544,7 @@ def set_user_track(channel : discord.Channel, user : discord.Member, track, whol
 		user_tracking[user.id] = {}
 		channel_ids = [channel.id]
 
-	if server_id == server.id:
+	if server_id == channel.server.id:
 		sql = "UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=?"
 	else:
 		sql = "INSERT INTO user_tracking VALUES (?,?,?,?)"
@@ -1220,11 +1220,13 @@ async def manage_user_tracking(ctx, call, command, args):
 		whole_server = True if whole_server in ["yes", 'y'] else False
 		if track in ["yes", 'y']:
 			set_user_track(ctx.channel, ctx.author, True, whole_server)
-			await client.send_message(ctx.channel, ":ok_hand: You will be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+			await client.send_message(ctx.channel, ":ballot_box_with_check: You will be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
 		elif track in ["no", 'n']:
 			set_user_track(ctx.channel, ctx.author, False, whole_server)
-			await client.send_message(ctx.channel, ":ok_hand: You will not be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
-
+			await client.send_message(ctx.channel, ":ballot_box_with_check: You will not be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+		elif track in ["status", 's', 'c', "check"]:
+			track_status = is_user_tracked(ctx.channel, ctx.author)
+			await client.send_message(ctx.chanel, ":{}: You will {} messaged if you are mentioned in this {}".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
@@ -1365,7 +1367,7 @@ async def on_message(message):
 					await client.send_message(message.channel, response)
 	else:
 		for user in message.mentions:
-			if is_user_tracked(message.channel, user) == True:
+			if is_user_tracked(message.channel, user)[0] == True:
 				if user.status in [discord.Status.offline, discord.Status.idle]:
 					await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name, message.author.discriminator, message.clean_content))
 					time.sleep(0.21)
