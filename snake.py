@@ -528,22 +528,27 @@ def is_user_tracked(channel : discord.Channel, user : discord.Member):
 
 # change user tracking
 def set_user_track(channel : discord.Channel, user : discord.Member, track, whole_server=None):
-	channel_ids, sql = None, None
+	channel_ids, sql, server_id = None, None, None
 	if user.id in user_tracking:
 		channel_ids = user_tracking[user.id]["channel_ids"]
+		server_id = user_tracking[user.id]["server_id"]
 		if track == True:
 			if not channel.id in channel_ids:
 				channel_ids = channel_ids + [channel.id]
 		else:
 			if channel.id in channel_ids:
 				channel_ids.remove(channel.id)
-		sql = "UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=?"
 		if whole_server == None:
 			whole_server = user_tracking[user.id]["whole_server"]
 	else:
 		user_tracking[user.id] = {}
 		channel_ids = [channel.id]
+
+	if server_id == server.id:
+		sql = "UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=?"
+	else:
 		sql = "INSERT INTO user_tracking VALUES (?,?,?,?)"
+
 	user_tracking[user.id]["channel_ids"] = channel_ids
 	user_tracking[user.id]["whole_server"] = whole_server
 
