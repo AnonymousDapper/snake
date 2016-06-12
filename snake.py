@@ -113,6 +113,7 @@ List [setting]                => show value of setting(s)
 Meme <name> <text> <text>     => make a meme
 Chat <chan> <msg> [server]    => chat on different server
 Permissions                   => list snakes permissions
+Track <option> [wholeserver]  => mention tracking 
 
 
 User is @Mention or their name
@@ -240,7 +241,7 @@ Read Message History => {11}
 ```''' # info about roles
 
 base_docs_url = "http://discordpy.readthedocs.io/en/latest/api.html#" # docs
-user_notes, voice_channels = {}, {} # empty stuff
+user_notes, voice_channels, user_tracking = {}, {}, {} # empty stuff
 
 voice_count, private_count, server_count, channel_count = 0,0,0,0
 
@@ -309,6 +310,13 @@ log_db_cursor.execute("SELECT * FROM user_tags")
 
 for tag in log_db_cursor.fetchall():
 	user_notes[tag[0]] = {"name": tag[0], "owner": tag[2], "content": tag[1]}
+
+log_db_cursor.execute("SELECT * FROM user_tracking")
+
+for user_info in log_db_cursor.fetchall():
+	user_tracking[user_info[0]] = {"user_id": user_info[0], "server_id": user_info[1], "channel_ids": user_info[2].split(","), "whole_server": True if user_info[3] == "yes" else False}
+
+
 
 temp_db.commit()
 client = discord.Client()
@@ -510,6 +518,36 @@ def expand_video_url(text):
 	if not url.startswith("http") == True:
 		url = "https://www.youtube.com/watch?v=" + url
 	return url
+
+# is a user tracking mentions?
+def is_user_tracked(channel : discord.Channel, user : discord.Member):
+	if user.id in user_tracking:
+		user_track = user_tracking[user.id]
+		return user_track["whole_server"] == True or channel.id in user_track["channel_ids"]
+
+
+# change user tracking
+def set_user_track(channel : discord.Channel, user : discord.Member, track, whole_server=None):
+	channel_ids, sql = None, None
+	if user.id in user_tracking:
+		channel_ids = user_tracking[user.id]["channel_ids"]
+		if track == True:
+			if not channel.id in channel_ids:
+				channel_ids = channel_ids + channel.id
+		else:
+			if channel.id in channel_ids:
+				channel_ids.remove(channel.id)
+		sql = "UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=?"
+		if whole_server == None:
+			whole_server = user_tracking[user.id]["whole_server"]
+	else:
+		user_tracking[user.id] = {}
+		channel_ids = [channel.id]
+		sql = "INSERT INTO user_tracking VALUES (?,?,?,?)"
+	user_tracking[user.id]["channel_ids"] = channel_ids
+	user_tracking[user.id]["whole_server"] = whole_server
+
+	log_db_cursor.execute(sql, (user.id, channel.server.id, ",".join(channel_ids), "yes" if whole_server == True else "no"))
 
 # End helper funcs
 
@@ -751,8 +789,6 @@ async def purge_messages(ctx, call, command, args):
 							time.sleep(.21)
 			except Exception as e:
 				await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
-
-
 
 # manage saved videos
 async def manage_user_videos(ctx, call, command, args):
@@ -1166,6 +1202,24 @@ async def get_permissions(ctx, call, command, args):
 		"is" if permission_list.administrator == True else "is not"
 	))
 
+# user tracking
+async def manage_user_tracking(ctx, call, command, args):
+	if ctx.server == None:
+		await client.send_message(ctx.author, "```diff\n- You cannot track mentions in a private channel\n```")
+		return
+	track = args[0] if len(args) > 0 else None
+	whole_server = args[1] if len(args) > 1 else None
+	if not track == None:
+		track = str(track).lower()
+		whole_server = str(whole_server).lower()
+		whole_server = True if whole_server in ["yes", 'y'] else False
+		if track in ["yes", 'y']:
+			set_user_track(ctx.channel, ctx.author, True, whole_server)
+			await client.send_message(ctx.channel, ":ok_hand: You will be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+		elif track in ["no", 'n']:
+			set_user_track(ctx.channel, ctx.author, False, whole_server)
+			await client.send_message(ctx.channel, ":ok_hand: You will not be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
@@ -1222,6 +1276,7 @@ functions = {
 	"meme": make_meme,
 	"chat": cross_server_chat,
 	"permissions": get_permissions,
+	"track": manage_user_tracking,
 
 
 	"test": test
@@ -1274,7 +1329,7 @@ async def on_channel_delete(channel):
 
 @client.event
 async def on_message(message):
-	if message.author == client.user or message.author.bot == True:
+	if message.author == client.user:
 		return
 	await log_message(message)
 	if message.content.lower().startswith("snake"):
@@ -1303,6 +1358,12 @@ async def on_message(message):
 				response = await talk_pandora(message.author, " ".join(args[1:]))
 				if not response == None:
 					await client.send_message(message.channel, response)
+	else:
+		for user in message.mentions:
+			if is_user_tracked(message.channel, user) == True:
+				if user.status in [discord.Status.offline, discord.Status.idle]:
+					await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name, message.author.discriminator, message.clean_content))
+					time.sleep(0.21)
 
 token_file = open("token.txt", 'r')
 token = str(token_file.read())
