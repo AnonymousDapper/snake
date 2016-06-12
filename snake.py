@@ -1384,7 +1384,7 @@ async def on_message(message):
 		for user in message.mentions:
 			if is_user_tracked(message.channel, user) == True:
 				#if user.status in [discord.Status.offline, discord.Status.idle]:
-				await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name, message.author.discriminator, message.clean_content))
+				await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name if message.author.nick == None else message.author.nick, message.author.discriminator, message.clean_content))
 				time.sleep(0.21)
 
 token_file = open("token.txt", 'r')
