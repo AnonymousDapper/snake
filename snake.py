@@ -1235,13 +1235,13 @@ async def manage_user_tracking(ctx, call, command, args):
 		whole_server = True if whole_server in ["yes", 'y'] else False
 		if track in ["yes", 'y']:
 			set_user_track(ctx.channel, ctx.author, True, whole_server)
-			await client.send_message(ctx.channel, ":ballot_box_with_check: You will be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+			await client.send_message(ctx.channel, ":ballot_box_with_check: You will be messaged if you are mentioned in this {}".format("channel" if whole_server == False else "server"))
 		elif track in ["no", 'n']:
 			set_user_track(ctx.channel, ctx.author, False, whole_server)
-			await client.send_message(ctx.channel, ":ballot_box_with_check: You will not be messaged if you are mentioned in this {} while offline".format("channel" if whole_server == False else "server"))
+			await client.send_message(ctx.channel, ":ballot_box_with_check: You will not be messaged if you are mentioned in this {}".format("channel" if whole_server == False else "server"))
 		elif track in ["status", 's', 'c', "check"]:
 			status = is_user_tracked(ctx.channel, ctx.author, True)
-			await client.send_message(ctx.channel, ":{}: You will {} messaged if you are mentioned in this {} while offline".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
+			await client.send_message(ctx.channel, ":{}: You will {} messaged if you are mentioned in this {}".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
