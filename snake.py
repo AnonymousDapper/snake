@@ -1173,6 +1173,9 @@ async def make_meme(ctx, call, command, args):
 
 # cross server chat
 async def cross_server_chat(ctx, call, command, args):
+	if ctx.server == None:
+		await client.send_message(ctx.channel, "```diff\n- Cannot chat from a private message\n```")
+		return
 	channel_name = args[0] if len(args) > 0 else None
 	message_to_send = args[1] if len(args) > 1 else None
 	server_name = args[2] if len(args) > 2 else None
@@ -1180,7 +1183,7 @@ async def cross_server_chat(ctx, call, command, args):
 		if not server_name == None:
 			channel = discord.utils.get(client.get_all_channels(), server__name=server_name, name=channel_name)
 		else:
-			channel = discord.utils.get(client.get_all_channels(), name=channel_name)
+			channel = discord.utils.get(ctx.server.channels, name=channel_name)
 		if channel == None and server_name == None:
 			await client.send_message(ctx.channel, "```diff\n- Channel '{}' not found\n```".format(channel_name))
 			return
@@ -1188,7 +1191,7 @@ async def cross_server_chat(ctx, call, command, args):
 			await client.send_message(ctx.channel, "```diff\n- Channel '{}' on '{}' not found\n```".format(channel_name, server_name))
 			return
 		try:
-			await client.send_message(channel,"{} - #{}\n**Message from {}#{}:**\n\n{}".format(ctx.server.name,ctx.channel.name,ctx.author.display_name,ctx.author.discriminator,message_to_send))
+			await client.send_message(channel,"{} - #{}\n**Message from {}#{}:**\n\n{}\n\n:information_source: Reply to this message with `snake chat {} <message>{}`".format(ctx.server.name,ctx.channel.name,ctx.author.display_name,ctx.author.discriminator,message_to_send, ctx.channel.name, "" if channel.server.name == ctx.server.name else " '" + ctx.server.name + "'"))
 		except Exception as e:
 			await client.send_message(ctx.channel,"```py\n{}: {}\n```".format(type(e).__name__,str(e)))
 
