@@ -1354,13 +1354,19 @@ async def on_message(message):
 	if message.author == client.user:
 		return
 	await log_message(message)
+	for user in message.mentions:
+		if is_user_tracked(message.channel, user) == True:
+			await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name if message.author.nick == None else message.author.nick, message.author.discriminator, message.clean_content))
+			time.sleep(0.21)
+
 	if message.content.lower().startswith("snake"):
 		args = parse_commands(message.content)
 		for user_mention in message.mentions:
 			mention_text = "<@!{}>".format(user_mention.id)
 			if mention_text not in args:
 				mention_text = "<@{}>".format(user_mention.id)
-			args[args.index(mention_text)] = user_mention# parse user mentions
+			if mention_text in args:
+				args[args.index(mention_text)] = user_mention# parse user mentions
 		for channel_mention in message.channel_mentions:
 			mention_text = "<#{}>".format(channel_mention.id)
 			if mention_text in args:
@@ -1380,12 +1386,6 @@ async def on_message(message):
 				response = await talk_pandora(message.author, " ".join(args[1:]))
 				if not response == None:
 					await client.send_message(message.channel, response)
-	else:
-		for user in message.mentions:
-			if is_user_tracked(message.channel, user) == True:
-				#if user.status in [discord.Status.offline, discord.Status.idle]:
-				await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name if message.author.nick == None else message.author.nick, message.author.discriminator, message.clean_content))
-				time.sleep(0.21)
 
 token_file = open("token.txt", 'r')
 token = str(token_file.read())
