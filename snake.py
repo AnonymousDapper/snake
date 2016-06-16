@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """ Discord API Snake bot """
 
 """
@@ -79,6 +80,8 @@ class Attributes:
 
 help_docs = '''
 ```xl
+Say "snake help <command>" to view command-specific help
+
 User ** <a/r/l> [User]        => manage admins
 Run ** <code>                 => execute code
 Leave ** <server>             => leaves the server
@@ -98,9 +101,9 @@ Summon                        => bring snake to your voice channel
 Help                          => displays this help page
 Insult [User]+                => insult people
 Invite                        => lets you add snake
-Info [chan/role/User]         => print info. "server" works too
+Info [chan/role/User]         => print information
 
-Docs <obj>                    => returns discord.py docs for obj
+Docs <obj>                    => discord.py docs link
 Tag <g/l/d/a/e> <name> <data> => manage tags
 Game [gamename]               => makes snake play the game
 Xkcd  [comicid]               => get an xkcd comic
@@ -117,6 +120,7 @@ Track <option> [wholeserver]  => mention tracking
 
 
 User is @Mention or their name
+Wrap multi-word arguments with spaces
 
 * Admin only
 ** Owner only
@@ -321,6 +325,302 @@ for user_info in log_db_cursor.fetchall():
 temp_db.commit()
 client = discord.Client()
 
+help_strings = {
+	"user": '''```xl
+User - Manage Administrators (owner only)
+
+1> snake user add/a User
+2> snake user remove/r User
+3> snake user list/l
+
+1 => add User as admin
+2 => remove User from admin list
+3 => list all admins
+```''',
+
+	"run": '''```xl
+Run - Execute Code (owner only)
+
+1> snake run `print("Hello, World!")`
+
+1 => execute code, preserving newlines
+```''',
+
+	"leave": '''```xl
+Leave - Leave a Server (owner only)
+
+1> snake leave "Discord API"
+
+1 => leave the given server
+```''', 
+
+	"quit": '''```xl
+Quit - Stop The Bot (owner only)
+
+1> snake quit
+
+1 => stop the bot
+```''',
+
+	"debug": '''```xl
+Debug - Check The Value of a Statement (owner only)
+
+1> snake debug `4 / 5 + 12`
+
+1 => execute one line of code
+```''',
+
+	"clear": '''```xl
+Clear - Remove Bot Messages (admin only)
+
+1> snake clear 12
+2> snake clear
+
+1 => remove 12 self messages
+2 => remove 1 self message
+```''',
+
+	"set": '''```xl
+Set - Adjust Settings (admin only)
+
+1> snake set enable_ai on
+2> snake set ban_everyone off
+
+1 => turns 'enable_ai' on (True)
+2 => turns 'ban_everyone' off (False)
+```''',
+
+	"playx": '''```xl
+PlayX - Manage Voice Channels (admin only)
+
+1> snake playx join/j 'Public Voice'
+2> snake playx leave/l 'Public Voice'
+3> snake playx move/m 'Private Voice'
+4> snake playx stop/s
+5> snake playx pause/p
+6> snake playx resume/r
+7> snake playx volume/v 100
+
+1 => join Public Voice channel
+2 => leave Public Voice channel
+3 => move to Private Voice
+4 => stop playing
+5 => pause playing
+6 => resume playing
+7 => adjust volume
+```''',
+
+	"purge": '''```xl
+Purge - Remove Other Messages (admin only)
+
+1> snake purge User 20
+2> snake purge all 9999
+
+1 => remove 20 of User's messages
+2 => remove 9999 messages, ignoring author
+```''',
+
+	"video": '''```xl
+Video - Manage Stored Videos
+
+1> snake video save/s "I'm Out" 5FjWe31S_0g
+2> snake video list/l
+3> snake video delete/d "I'm Out"
+
+1 => saves the youtube video with the given id
+2 => list all saved videos
+3 => delete the video
+```''',
+
+	"play": '''```xl
+Play - Play Audio
+
+1> snake play http://youtube.com/watch?v=5FjWe31S_0g 'Public Voice'
+2> snake play 5FjWe31S_0g 'Public Voice'
+3> snake play "$I'm Out"
+
+1 => plays the given video in Public Voice
+2 => same as above
+3 => plays the saved video "I'm Out" in snakes current channel
+```''',
+
+	"speak": '''```xl
+Speak - Speak Audio
+
+1> snake speak "Hello" 'Public Voice
+1> snake speak "Goodbye"
+
+1 => speaks in Public Voice
+2 => speaks in snakes current channel
+```''',
+
+	"summon": '''```xl
+Summon - Bring Snake To Your Channel
+
+1> snake summon
+
+1 => makes snake join the voice channel you are in
+```''',
+
+	"help": '''```xl
+Help - Get Help (you need it)
+
+1> snake help
+
+1 => brings up help docs
+```''',
+
+	"insult": '''```xl
+Insult - Because We All Like Being Mean
+
+1> snake insult
+2> snake insult User User User
+
+1 => snakes spits an insult out to the channel
+2 => snake privately insults all Users
+```''',
+
+	"invite": '''```xl
+Invite - Snake Will Join You
+
+1> snake invite
+
+1 => get the oauth link to invite the bot
+```''',
+	
+	"info": '''```xl
+Info - Information about anything
+
+1> snake info client
+2> snake info server
+3> snake info 'Public Voice'
+4> snake info lounge
+5> snake info Moderators
+6> snake info User
+
+1-6 => info about the bot, the server, a voice channel, text channel, role, member
+```''',
+
+	"docs": '''```xl
+Docs - RTFD
+
+1> snake docs
+2> snake docs client.send_message
+
+1 => readthedocs link for discord.py
+2 => same as above, but direct link to discord.Client.send_message
+```''',
+
+	"tag": '''```xl
+Tag - Keep Track of Notes
+
+1> snake tag get/g 'Youtube video'
+2> snake tag list/l
+3> snake tag delete/d 'Youtube video'
+4> snake tag add/a 'video #2' 'what does the fox say'
+5> snake tag edit/e 'video #2' 'gangnam style'
+
+1 => get contents of a tag by name
+2 => list all tags (tags owned by you are prefixed with "^")
+3 => delete a tag
+4 => create a tag
+5 => edit a tag
+```''',
+
+	"game": '''```xl
+Game - Change Snakes Game
+
+1> snake game "The Elder Scrolls V: Skyrim"
+2> snake game
+
+1 => make snake play the best game
+2 => make snake do work instead of playing a game
+```''',
+
+	"xkcd": '''```,
+XKCD - Best Comics
+
+1> snake xkcd
+2> snake xkcd 1342
+
+1 => fetch random xkcd comic
+2 => fetch xkcd comic with id 1342
+```''',
+
+	"uptime": '''```xl
+Uptime - How Long Has He Been Running
+
+1> snake uptime
+
+1 => fetch the bots uptime
+```''',
+
+	"source": '''```xl
+Source - Open Source is best
+
+1> snake source
+
+1 => github link to snake
+```''',
+
+	"playing": '''```xl
+Playing - What Song is Playing
+
+1> snake playing
+
+1 => fetches information about the song that snake is playing
+```''',
+
+	"list": '''```xl
+List - Get Settings
+
+1> snake list
+2> snake list ban_everyone
+
+1 => see all settings and their value
+2 => see the value of 'ban_everyone'
+```''',
+
+	"meme": '''```xl
+Meme - git memed
+
+1> snake meme list
+2> snake meme blb 'writes bot' 'dies'
+
+1 => see a list of all the memes you can use and their full names
+2 => make a meme with the name, the top text, and bottom text
+```''',
+
+	"chat": '''```xl
+Chat - Send Messages To Other Channels or Servers
+
+1> snake chat testing "This is a cross-server message" 'Discord API'
+2> snake chat playground 'This is only a cross-channel message'
+
+1 => send a message to #testing in Discord API
+2 => send a message to #playground in the current channel
+```''',
+
+	"permissions": '''```xl
+Permissions - What Can We Do
+
+1> snake permissions
+
+1 => see a list of snake's permissions
+```''',
+
+	"track": '''```xl
+Track - Mention Alerts
+
+1> snake track yes/y
+2> snake track yes/y yes/y
+3> snake track no/n
+
+1 => snake will alert you if you are mentioned in the current channel
+2 => snake will alert you if you are mentioned in the current server
+3 => snake will not alert you if you are mentioned
+```'''
+}
 ## End of variables
 """ #						#
 	#						#
@@ -905,7 +1205,12 @@ async def join_player_voice(ctx, call, command, args):
 
 # get helpdocs
 async def get_help(ctx, call, command, args):
-	await client.send_message(ctx.channel, help_docs)
+	requested = args[0] if len(args) > 0 else None
+	if not requested == None:
+		if str(requested).lower() in help_strings:
+			await client.send_message(ctx.channel, help_strings[str(requested).lower()])
+	else:
+		await client.send_message(ctx.channel, help_docs)
 
 # insults :)
 async def get_insult(ctx, call, command, args):
