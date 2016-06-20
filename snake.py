@@ -1243,7 +1243,7 @@ async def get_oauth_link(ctx, call, command, args):
 	oauth_url = discord.utils.oauth_url("181584771510566922", permissions)
 	await client.send_message(ctx.author, "Click the link below to add snake to your server\n{}".format(oauth_url))
 
-#info
+# info
 async def get_object_info(ctx, call, command, args):
 	item = args[0] if len(args) > 0 else None
 	if type(item).__name__ == "str":
@@ -1348,7 +1348,7 @@ async def get_object_info(ctx, call, command, args):
 				else:
 					await client.send_message(ctx.channel, "Unable to retrieve information, '{}' matches multiple objects.".format(item))
 
-#get docs for soandso
+# get docs for soandso
 async def get_object_docs(ctx, call, command, args):
 	item = args[0] if len(args) > 0 else None
 	if not item == None:
@@ -1357,7 +1357,7 @@ async def get_object_docs(ctx, call, command, args):
 	else:
 		await client.send_message(ctx.channel, base_docs_url)
 
-#manage tags, yay
+# manage tags, yay
 async def manage_user_tags(ctx, call, command, args):
 	method = str(args[0] if len(args) > 0 else None).lower()
 	name = args[1] if len(args) > 1 else None
