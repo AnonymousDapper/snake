@@ -59,7 +59,7 @@ class Text: # ansi color codes for easy access
 	white = '\033[37m'
 	default = '\033[37m'
 
-class Background:
+class Background: #598ebd #c5c8c6
 	black = '\033[40m'
 	red = '\033[41m'
 	green = '\033[42m'
@@ -615,10 +615,12 @@ Track - Mention Alerts
 1> snake track yes/y
 2> snake track yes/y yes/y
 3> snake track no/n
+4> snake track no/n no/n
 
 1 => snake will alert you if you are mentioned in the current channel
 2 => snake will alert you if you are mentioned in the current server
-3 => snake will not alert you if you are mentioned
+3 => snake will not alert you if you are mentioned in the current channel
+4 => snake will not alert you if you are mentioned in the current server
 ```'''
 }
 ## End of variables
@@ -634,10 +636,11 @@ Track - Mention Alerts
 # commit to the log database every 30 seconds so i wont forget
 async def db_commit():
 	log_db.commit()
+	print('committed')
 	asyncio.sleep(30)
 	client.loop.create_task(db_commit())
 
-#parse commands into table
+# parse commands into table
 def parse_commands(text, quotes="'\"`", whitespace=" 	"):
 	args = [""]
 	counter = 0
@@ -674,6 +677,7 @@ async def log_message(message : discord.Message):
 		message.server.name if message.channel.is_private == False else "Direct Message",
 		message.author.id
 	)
+	print("{0.green}{1}{3.off} => {0.magenta}{2.server!s}{3.off} - #{0.red}{2.channel!s}{3.off} {0.cyan}{2.author!s}{3.off}#{0.yellow}{2.author.discriminator}{3.off}: {2.clean_content}".format(Text, (message.timestamp + utc_offset).strftime(time_format), message, Attributes))
 	log_db_cursor.execute("INSERT INTO chat_logs VALUES (?,?,?,?,?,?,?)", message_data)
 
 # talk to pandorabots api
