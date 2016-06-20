@@ -700,7 +700,7 @@ async def talk_pandora(user : discord.Member, message):
 		temp_db_cursor.execute("INSERT INTO pb_ids VALUES(?,?)", (user.id, response_data.group("custid")))
 		temp_db.commit()
 	if not response_data == None:
-		return response_data.group("response")
+		return response_data.group("response").strip()
 
 # fetch users admin status
 def is_admin(user: discord.Member):
