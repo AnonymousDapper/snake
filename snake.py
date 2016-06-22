@@ -677,7 +677,7 @@ async def log_message(message : discord.Message):
 		message.server.name if message.channel.is_private == False else "Direct Message",
 		message.author.id
 	)
-	print("{0.green}{1}{3.off} => {0.magenta}{2.server!s}{3.off} - #{0.red}{2.channel!s}{3.off} {0.cyan}{2.author!s}{3.off}#{0.yellow}{2.author.discriminator}{3.off}: {2.clean_content}".format(Text, (message.timestamp + utc_offset).strftime(time_format), message, Attributes))
+	# print("{0.green}{1}{3.off} => {0.magenta}{2.server!s}{3.off} - #{0.red}{2.channel!s}{3.off} {0.cyan}{2.author!s}{3.off}#{0.yellow}{2.author.discriminator}{3.off}: {2.clean_content}".format(Text, (message.timestamp + utc_offset).strftime(time_format), message, Attributes))
 	log_db_cursor.execute("INSERT INTO chat_logs VALUES (?,?,?,?,?,?,?)", message_data)
 
 # talk to pandorabots api
