@@ -1,7 +1,6 @@
 cache/
 dectalk/hldata*
 dectalk/say.wav
-snake.db
 snake_legacy.py
 token.txt
 snake.db-journal

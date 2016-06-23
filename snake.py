@@ -6,7 +6,7 @@ MIT License
 
 Copyright (c) 2016 AnonymousDapper (█▀█ █▄█ █ █ ²) (TickerOfTime)
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
+Permission is hereby granted
 of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
@@ -59,7 +59,7 @@ class Text: # ansi color codes for easy access
 	white = '\033[37m'
 	default = '\033[37m'
 
-class Background: #598ebd #c5c8c6
+class Background:
 	black = '\033[40m'
 	red = '\033[41m'
 	green = '\033[42m'
@@ -876,9 +876,9 @@ def set_user_track(channel : discord.Channel, user : discord.Member, mentions_tr
 # End helper funcs
 
 """
-			 ╔ ╗
-		   ╔ ╔ ╗ ╗
-		 ╔ ╔ ╔ ╗ ╗ ╗
+			     ╔ ╗
+		     ╔ ╔ ╗ ╗
+		   ╔ ╔ ╔ ╗ ╗ ╗
 	   ╔ ┌─┬─┐ ┌─┬─┐ ╗
 	  ║──┤ │ ├─┤ │ ├─ ║
 	  ╠══│ ├─┼─┼─┤ │══╣                 why?
@@ -1554,6 +1554,7 @@ async def manage_user_tracking(ctx, call, command, args):
 		elif track in ["status", 's', 'c', "check"]:
 			status = is_user_tracked(ctx.channel, ctx.author, True)
 			await client.send_message(ctx.channel, ":{}: You will {} messaged if you are mentioned in this {}".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
+
 # test
 async def test(ctx, call, command, args):
 	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
