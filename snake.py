@@ -1704,6 +1704,6 @@ token_file = open("token.txt", 'r')
 token = str(token_file.read())
 token_file.close()
 
-client.run(token)
+client.run(token,bot=False)
 temp_db.close()
 log_db.close()
