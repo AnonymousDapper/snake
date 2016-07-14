@@ -146,7 +146,7 @@ Written by AnonymousDapper#7467 [163521874872107009]
 
 ```''' # info about snake
 
-user_info = '''
+member_info = '''
 ```xl
 WHOIS User
 
@@ -1253,7 +1253,7 @@ async def get_object_info(ctx, call, command, args):
 	if not item == None:
 		if isinstance(item, discord.Member) == True:
 			if not item == ctx.server.me:
-				await client.send_message(ctx.channel, user_info.format(
+				await client.send_message(ctx.channel, member_info.format(
 					item,
 					"Yes" if item.bot == True else "No?",
 					", ".join(map(lambda x:str(x)[1:] if str(x).startswith('@') else str(x), item.roles)),
