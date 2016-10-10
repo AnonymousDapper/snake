@@ -1,6 +1,9 @@
 cache/
-dectalk/hldata*
-dectalk/say.wav
 snake_legacy.py
-token.txt
-snake.db-journal
+credentials.json
+snake.log
+info/
+cogs/__pycache__/
+cogs/__init__.py
+cogs/utils/__pycache__/
+cogs/utils/__init__.py

@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
-""" Discord API Snake bot """
+#/user/bin/env python3
+""" Discord API 'snake'"""
 
 """
 MIT License
 
-Copyright (c) 2016 AnonymousDapper (█▀█ █▄█ █ █ ²) (TickerOfTime)
+Copyright (c) 2016 AnonymousDapper (TickerOfTime)
 
 Permission is hereby granted
 of this software and associated documentation files (the "Software"), to deal
@@ -25,1685 +25,253 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
-import discord, re, aiohttp, json, io, asyncio, youtube_dl, os, contextlib, sys, time, html
-import sqlite3 as sql
-from datetime import datetime, timedelta
-from urllib.parse import quote
-from plotly import plotly as plot ## TODO : https://plot.ly/python/
-from plotly import graph_objs
-import numpy
-
-# discord: pip install --upgrade https://github.com/Rapptz/discord.py/archive/async.zip
-# youtube_dl: pip install --upgrade youtube_dl
-# sqlite3 pip install --upgrade sqlite3
-
-#sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding = sys.stdout.encoding, errors = "xmlcharrefreplace", line_buffering = True) # Handle printing of Unicode chars.. ugh
-
-""" #						#
-	#						#
-	#					  	#
-		Variables and such
-	#						#
-	#						#
-	#						#
-"""
-
-class Text: # ansi color codes for easy access
-	black = '\033[30m'
-	red = '\033[31m'
-	green = '\033[32m'
-	yellow = '\033[33m'
-	blue = '\033[34m'
-	magenta = '\033[35m'
-	cyan = '\033[36m'
-	white = '\033[37m'
-	default = '\033[37m'
-
-class Background:
-	black = '\033[40m'
-	red = '\033[41m'
-	green = '\033[42m'
-	yellow = '\033[43m'
-	blue = '\033[44m'
-	magenta = '\033[45m'
-	cyan = '\033[46m'
-	white = '\033[47m'
-	default = '\033[40m'
-
-class Attributes:
-	off = '\033[0m'
-	bold = '\033[1m'
-	score = '\033[4m'
-	blink = '\033[5m'
-	reverse = '\033[7m'
-	hidden = '\033[8m'
-
-help_docs = '''
-```xl
-Say "snake help <command>" to view command-specific help
-
-User ** <a/r/l> [User]        => manage admins
-Run ** <code>                 => execute code
-Leave ** <server>             => leaves the server
-Quit **                       => exits snake
-Debug ** <expression>         => execute a statement
-
-Clear * <count>               => removes snakes messages
-Set * <settingname> <option>  => change settings
-Playx * <j/l/m/s/p/r/v> [opt] => voice control
-Purge * <User/all> <count>    => remove someones messages
-
-Video <s/l/d> [name] [id]     => manage stored videos
-Play  <url/id/sid> [channel]  => play a video in the channel
-Speak <text> [channel]        => speaks the text in channel
-Summon                        => bring snake to your voice channel
-
-Help                          => displays this help page
-Insult [User]+                => insult people
-Invite                        => lets you add snake
-Info [chan/role/User]         => print information
-
-Docs <obj>                    => discord.py docs link
-Tag <g/l/d/a/e> <name> <data> => manage tags
-Game [gamename]               => makes snake play the game
-Xkcd  [comicid]               => get an xkcd comic
-
-Uptime                        => see how long snake has been up
-Source                        => get snakes source code
-Playing                       => see the song thats playing
-List [setting]                => show value of setting(s)
-
-Meme <name> <text> <text>     => make a meme
-Chat <chan> <msg> [server]    => chat on different server
-Permissions                   => list snakes permissions
-Track <option> [wholeserver]  => mention tracking 
-
-
-User is @Mention or their name
-Wrap multi-word arguments with spaces
-
-* Admin only
-** Owner only
-```''' # help page
-
-client_info = '''
-```xl
-WHOIS Bot
-
-	Name => {0.name}#{0.discriminator}
-	  ID => {0.id}
-  Avatar => {0.avatar_url}
-	Nick => {0.display_name}#{0.discriminator}
- Playing => {7}
- Created => {1}
-  Uptime => {2}
-Channels => {3}
- Servers => {4}
-
-Running discord.py {5} on Python {6}
-
-Written by AnonymousDapper#7467 [163521874872107009]
-
-```''' # info about snake
-
-member_info = '''
-```xl
-WHOIS User
-
-   Name => {0.name}#{0.discriminator}
-	 ID => {0.id}
- Avatar => {0.avatar_url}
-   Nick => {0.display_name}#{0.discriminator}
- Status => {0.status}{5}
-	Bot => {1}
-Created => {3}
- Joined => {4}
-  Roles => {2}
-```''' # info about a user
-
-server_info = '''
-```xl
-WHOIS Server
-
-	Name => {0.name}
-	  ID => {0.id}
-  Region => {0.region!s}
- Members => {1}
-Channels => {2}
-   Owner => {0.owner.name}#{0.owner.discriminator}
- Created => {3}
-	Icon => {0.icon_url}
-   Roles => {4}
-```''' # info about server
-
-text_channel_info = '''
-```xl
-WHOIS Text Channel
-
-   Name => {0.name}
- Server => {0.server.name}
-     ID => {0.id}
-Created => {1}
-  Topic => {0.topic}
-```'''
-
-voice_channel_info = '''
-```xl
-WHOIS Voice Channel
-
-     Name => {0.name}
-   Server => {0.server.name}
-       ID => {0.id}
-  Created => {1}
-  Members => {2}/{5}
-  Bitrate => {3}kbs
-   Online => {4}
-```'''
-
-role_info = '''
-```xl
-WHOIS Role
-
-     Name => {0.name}
-       ID => {0.id}
-Seperated => {1}
-    Color => {2}
-  Created => {3}
-```'''
-
-ytplayer_info = '''
-```xl
-Playing "{0.title}" by "{0.uploader}" in {1.name}
-```''' # info about yt_player
-
-permission_info = '''
-```xl
-Snake {22} an Administrator.
-
-	  Create Invites => {0}
-		Kick Members => {1}
-		 Ban Members => {2}
-	 Manage Channels => {3}
-	   Manage Server => {4}
-	   Read Messages => {5}
-	   Send Messages => {6}
-   Send TTS Messages => {7}
-	 Manage Messages => {8}
-		 Embed Links => {9}
-		Attach Files => {10}
-Read Message History => {11}
-	Mention Everyone => {12}
-	Connect To Voice => {13}
-	  Speak In Voice => {14}
-		Mute Members => {15}
-	  Deafen Members => {16}
-		Move Members => {17}
-  Use Voice Activity => {18}
-	Change Nicknames => {19}
-	Manage Nicknames => {20}
-		Manage Roles => {21}
-```''' # info about roles
-
-base_docs_url = "http://discordpy.readthedocs.io/en/latest/api.html#" # docs
-user_notes, voice_channels, user_tracking = {}, {}, {} # empty stuff
-
-voice_count, private_count, server_count, channel_count = 0,0,0,0
-
-time_format = "%a %B %d, %Y, %H:%M:%S CST" # time format str
-pb_bot_id = "b0dafd24ee35a477" # PandoraBots Chomsky
-owner_ids = ["163521874872107009", "190966952649293824"] # my userid
-
-xkcd_rand_comic = "http://c.xkcd.com/random/comic/" # random xkcd
-
-utc_offset = timedelta(hours=-5)
-opus_loaded = discord.opus.is_loaded()
-
-class Settings: # setting management
-	settings_list = {
-		"enable_ai": False,
-		"notify_on_exit": True,
-		"notify_channel": False
-	}
-
-	def convert(b):
-		if b in [True, False]:
-			return "on" if b == True else "off"
-		else:
-			return b
-
-	@classmethod
-	def set(self, key, value):
-		self.settings_list[key] = value
-
-	@classmethod
-	def get(self, key):
-		if key in self.settings_list:
-			return self.settings_list[key]
-
-	@classmethod
-	def list(self):
-		settings = []
-		for key, value in self.settings_list.items():
-			settings.append("'{}' is {}".format(key, self.convert(value)))
-		return settings
-
-class Seconds: # for datetime conversion
-	year = 31536000
-	month = 2592000
-	week = 606461.538462
-	day = 86400
-	hour = 3600
-	minute = 60
-	second = 1
-
-with open("memelist.json", 'r') as f:
-	meme_list = json.load(f)
-
-with open("facelist.txt", 'r', encoding="utf-8") as f:
-	face_list = f.readlines()
-
-temp_db = sql.connect(":memory:")
-temp_db_cursor = temp_db.cursor()
-
-log_db = sql.connect("snake.db")
-log_db_cursor = log_db.cursor()
-
-temp_db_cursor.execute("CREATE TABLE pb_ids (user_id TEXT, cust_id TEXT)")
-
-log_db_cursor.execute("SELECT * FROM user_tags")
-
-for tag in log_db_cursor.fetchall():
-	user_notes[tag[0]] = {"name": tag[0], "owner": tag[2], "content": tag[1]}
-
-log_db_cursor.execute("SELECT * FROM user_tracking")
-
-for user_info in log_db_cursor.fetchall():
-	user_tracking[user_info[0]] = {user_info[1]: {"user_id": user_info[0], "server_id": user_info[1], "channel_ids": user_info[2].split(","), "whole_server": True if user_info[3] == "yes" else False}}
-
-
-
-temp_db.commit()
-client = discord.Client()
-
-help_strings = {
-	"user": '''```xl
-User - Manage Administrators (owner only)
-
-1> snake user add/a User
-2> snake user remove/r User
-3> snake user list/l
-
-1 => add User as admin
-2 => remove User from admin list
-3 => list all admins
-```''',
-
-	"run": '''```xl
-Run - Execute Code (owner only)
-
-1> snake run `print("Hello, World!")`
-
-1 => execute code, preserving newlines
-```''',
-
-	"leave": '''```xl
-Leave - Leave a Server (owner only)
-
-1> snake leave "Discord API"
-
-1 => leave the given server
-```''', 
-
-	"quit": '''```xl
-Quit - Stop The Bot (owner only)
-
-1> snake quit
-
-1 => stop the bot
-```''',
-
-	"debug": '''```xl
-Debug - Check The Value of a Statement (owner only)
-
-1> snake debug `4 / 5 + 12`
-
-1 => execute one line of code
-```''',
-
-	"clear": '''```xl
-Clear - Remove Bot Messages (admin only)
-
-1> snake clear 12
-2> snake clear
-
-1 => remove 12 self messages
-2 => remove 1 self message
-```''',
-
-	"set": '''```xl
-Set - Adjust Settings (admin only)
-
-1> snake set enable_ai on
-2> snake set ban_everyone off
-
-1 => turns 'enable_ai' on (True)
-2 => turns 'ban_everyone' off (False)
-```''',
-
-	"playx": '''```xl
-PlayX - Manage Voice Channels (admin only)
-
-1> snake playx join/j 'Public Voice'
-2> snake playx leave/l 'Public Voice'
-3> snake playx move/m 'Private Voice'
-4> snake playx stop/s
-5> snake playx pause/p
-6> snake playx resume/r
-7> snake playx volume/v 100
-
-1 => join Public Voice channel
-2 => leave Public Voice channel
-3 => move to Private Voice
-4 => stop playing
-5 => pause playing
-6 => resume playing
-7 => adjust volume
-```''',
-
-	"purge": '''```xl
-Purge - Remove Other Messages (admin only)
-
-1> snake purge User 20
-2> snake purge all 9999
-
-1 => remove 20 of User's messages
-2 => remove 9999 messages, ignoring author
-```''',
-
-	"video": '''```xl
-Video - Manage Stored Videos
-
-1> snake video save/s "I'm Out" 5FjWe31S_0g
-2> snake video list/l
-3> snake video delete/d "I'm Out"
-
-1 => saves the youtube video with the given id
-2 => list all saved videos
-3 => delete the video
-```''',
-
-	"play": '''```xl
-Play - Play Audio
-
-1> snake play http://youtube.com/watch?v=5FjWe31S_0g 'Public Voice'
-2> snake play 5FjWe31S_0g 'Public Voice'
-3> snake play "$I'm Out"
-
-1 => plays the given video in Public Voice
-2 => same as above
-3 => plays the saved video "I'm Out" in snakes current channel
-```''',
-
-	"speak": '''```xl
-Speak - Speak Audio
-
-1> snake speak "Hello" 'Public Voice
-1> snake speak "Goodbye"
-
-1 => speaks in Public Voice
-2 => speaks in snakes current channel
-```''',
-
-	"summon": '''```xl
-Summon - Bring Snake To Your Channel
-
-1> snake summon
-
-1 => makes snake join the voice channel you are in
-```''',
-
-	"help": '''```xl
-Help - Get Help (you need it)
-
-1> snake help
-
-1 => brings up help docs
-```''',
-
-	"insult": '''```xl
-Insult - Because We All Like Being Mean
-
-1> snake insult
-2> snake insult User User User
-
-1 => snakes spits an insult out to the channel
-2 => snake privately insults all Users
-```''',
-
-	"invite": '''```xl
-Invite - Snake Will Join You
-
-1> snake invite
-
-1 => get the oauth link to invite the bot
-```''',
-	
-	"info": '''```xl
-Info - Information about anything
-
-1> snake info client
-2> snake info server
-3> snake info 'Public Voice'
-4> snake info lounge
-5> snake info Moderators
-6> snake info User
-
-1-6 => info about the bot, the server, a voice channel, text channel, role, member
-```''',
-
-	"docs": '''```xl
-Docs - RTFD
-
-1> snake docs
-2> snake docs client.send_message
-
-1 => readthedocs link for discord.py
-2 => same as above, but direct link to discord.Client.send_message
-```''',
-
-	"tag": '''```xl
-Tag - Keep Track of Notes
-
-1> snake tag get/g 'Youtube video'
-2> snake tag list/l
-3> snake tag delete/d 'Youtube video'
-4> snake tag add/a 'video #2' 'what does the fox say'
-5> snake tag edit/e 'video #2' 'gangnam style'
-
-1 => get contents of a tag by name
-2 => list all tags (tags owned by you are prefixed with "^")
-3 => delete a tag
-4 => create a tag
-5 => edit a tag
-```''',
-
-	"game": '''```xl
-Game - Change Snakes Game
-
-1> snake game "The Elder Scrolls V: Skyrim"
-2> snake game
-
-1 => make snake play the best game
-2 => make snake do work instead of playing a game
-```''',
-
-	"xkcd": '''```,
-XKCD - Best Comics
-
-1> snake xkcd
-2> snake xkcd 1342
-
-1 => fetch random xkcd comic
-2 => fetch xkcd comic with id 1342
-```''',
-
-	"uptime": '''```xl
-Uptime - How Long Has He Been Running
-
-1> snake uptime
-
-1 => fetch the bots uptime
-```''',
-
-	"source": '''```xl
-Source - Open Source is best
-
-1> snake source
-
-1 => github link to snake
-```''',
-
-	"playing": '''```xl
-Playing - What Song is Playing
-
-1> snake playing
-
-1 => fetches information about the song that snake is playing
-```''',
-
-	"list": '''```xl
-List - Get Settings
-
-1> snake list
-2> snake list ban_everyone
-
-1 => see all settings and their value
-2 => see the value of 'ban_everyone'
-```''',
-
-	"meme": '''```xl
-Meme - git memed
-
-1> snake meme list
-2> snake meme blb 'writes bot' 'dies'
-
-1 => see a list of all the memes you can use and their full names
-2 => make a meme with the name, the top text, and bottom text
-```''',
-
-	"chat": '''```xl
-Chat - Send Messages To Other Channels or Servers
-
-1> snake chat testing "This is a cross-server message" 'Discord API'
-2> snake chat playground 'This is only a cross-channel message'
-
-1 => send a message to #testing in Discord API
-2 => send a message to #playground in the current channel
-```''',
-
-	"permissions": '''```xl
-Permissions - What Can We Do
-
-1> snake permissions
-
-1 => see a list of snake's permissions
-```''',
-
-	"track": '''```xl
-Track - Mention Alerts
-
-1> snake track yes/y
-2> snake track yes/y yes/y
-3> snake track no/n
-4> snake track no/n no/n
-
-1 => snake will alert you if you are mentioned in the current channel
-2 => snake will alert you if you are mentioned in the current server
-3 => snake will not alert you if you are mentioned in the current channel
-4 => snake will not alert you if you are mentioned in the current server
-```'''
-}
-## End of variables
-""" #						#
-	#						#
-	#						#
-		Helper Functions
-	#						#
-	#						#
-	#						#
-"""
-
-# commit to the log database every 30 seconds so i wont forget
-async def db_commit():
-	log_db.commit()
-	print('committed')
-	asyncio.sleep(30)
-	client.loop.create_task(db_commit())
-
-# parse commands into table
-def parse_commands(text, quotes="'\"`", whitespace=" 	"):
-	args = [""]
-	counter = 0
-	inside_quotes = False
-	current_quote = None
-	for char in text:
-		if char in quotes:
-			if inside_quotes is False:
-				inside_quotes = True
-				current_quote = char
-			elif char is current_quote:
-				inside_quotes = False
-				current_quote = None
-			else:
-				args[counter] += char
-		elif char in whitespace:
-			if inside_quotes is True:
-				args[counter] += char
-			else:
-				args.append("")
-				counter += 1
-		else:
-			args[counter] += char
-	return list(filter(lambda t:len(t) > 0, args))
-
-# log messages
-async def log_message(message : discord.Message):
-	message_data = (
-		(message.timestamp + utc_offset).strftime(time_format),
-		message.author.name,
-		message.content,
-		str(message.channel),
-		message.id,
-		message.server.name if message.channel.is_private == False else "Direct Message",
-		message.author.id
-	)
-	# print("{0.green}{1}{3.off} => {0.magenta}{2.server!s}{3.off} - #{0.red}{2.channel!s}{3.off} {0.cyan}{2.author!s}{3.off}#{0.yellow}{2.author.discriminator}{3.off}: {2.clean_content}".format(Text, (message.timestamp + utc_offset).strftime(time_format), message, Attributes))
-	log_db_cursor.execute("INSERT INTO chat_logs VALUES (?,?,?,?,?,?,?)", message_data)
-
-# talk to pandorabots api
-async def talk_pandora(user : discord.Member, message):
-	temp_db_cursor.execute("SELECT cust_id FROM pb_ids WHERE user_id=?", (user.id,))
-	cust_id = temp_db_cursor.fetchone()
-	with aiohttp.ClientSession() as session:
-		if not cust_id == None:
-			async with session.post("http://www.pandorabots.com/pandora/talk-xml", data={"botid": pb_bot_id, "input": message, "custid": cust_id}) as response:
-				if response.status == 200:
-					pb_response = await response.text()
-				pass
-		else:
-			async with session.post("http://www.pandorabots.com/pandora/talk-xml", data={"botid": pb_bot_id, "input": message}) as response:
-				if response.status == 200:
-					pb_response = await response.text()
-				pass
-	response_data = re.search(r'<result status="(?P<status>\d*)"\sbotid="(?P<botid>\w+)"\scustid="(?P<custid>\w+)">\s*<input>[\w ]+</input>\s*<that>(?P<response>.*)</that>', html.unescape(str(pb_response)), re.I)
-	if cust_id == None:
-		temp_db_cursor.execute("INSERT INTO pb_ids VALUES(?,?)", (user.id, response_data.group("custid")))
-		temp_db.commit()
-	if not response_data == None:
-		return response_data.group("response").strip()
-
-# fetch users admin status
-def is_admin(user: discord.Member):
-	log_db_cursor.execute("SELECT * FROM allowed_users WHERE user_id=?", (user.id, ))
-	if log_db_cursor.fetchone() == None:
-		return False
-	else:
-		return True
-
-# get time between two dates
-def get_elapsed_time(date_1, date_2):
-	delta = abs(date_2 - date_1)
-	time = int(delta.total_seconds())
-	track = []
-	desc = lambda n, h: ('a' if n == 1 else str(int(n))) + ('n' if h == 1 and n == 1 else '') + ''
-	mult = lambda n: 's' if n > 1 or n == 0 else ''
-	years = (time // Seconds.year)
-	track.append("{} year{}".format(desc(years, 0), mult(years)))
-
-	time = time - (years * Seconds.year)
-	months = (time // Seconds.month)
-	track.append("{} month{}".format(desc(months, 0), mult(months)))
-
-	time = time - (months * Seconds.month)
-	weeks = (time // Seconds.week)
-	track.append("{} week{}".format(desc(weeks, 0), mult(weeks)))
-
-	time = time - (weeks * Seconds.week)
-	days = (time // Seconds.day)
-	track.append("{} day{}".format(desc(days, 0), mult(days)))
-
-	time = time - (days * Seconds.day)
-	hours = (time // Seconds.hour)
-	track.append("{} hour{}".format(desc(hours, 1), mult(hours)))
-
-	time = time - (hours * Seconds.hour)
-	minutes = (time // Seconds.minute)
-	track.append("{} minute{}".format(desc(minutes, 0), mult(minutes)))
-
-	time = time - (minutes * Seconds.minute)
-	track.append("{} second{}".format(desc(time, 0), mult(time)))
-
-	return ", ".join(list(filter(lambda e: not e.startswith("0 "), track)))
-
-# upload a file to discord
-async def upload_file(url, file_name, channel : discord.Channel, note=""):
-	file_name = "cache/" + file_name
-	with aiohttp.ClientSession() as session:
-		async with session.get(url) as response:
-			if response.status == 200:
-				data = await response.read()
-				with open(file_name, "wb") as tmp_file:
-					tmp_file.write(data)
-			pass
-	try:
-		await client.send_file(channel, file_name, filename=file_name, content=note)
-	except Exception as e:
-		print("{0.red}{1}: {2}{3.off}".format(Text, type(e).__name__, str(e), Attributes))
-
-# manage saved videos
-def manage_saved_videos(action, yt_id="", video_name="", author=None):
-	if action is "save":
-		log_db_cursor.execute("SELECT * FROM youtube_videos WHERE id=? OR save_name=?", (yt_id, video_name))
-		if log_db_cursor.fetchone() == None:
-			log_db_cursor.execute("INSERT INTO youtube_videos VALUES (?,?,?)", (video_name, yt_id, author.id))
-	elif action is "remove":
-		log_db_cursor.execute("SELECT * FROM youtube_videos WHERE save_name=? AND author_id=?", (video_name, author.id))
-		if not log_db_cursor.fetchone() == None:
-			log_db_cursor.execute("DELETE FROM youtube_videos WHERE save_name=?", (video_name, ))
-	elif action is "load":
-		log_db_cursor.execute("SELECT * FROM youtube_videos WHERE save_name=?", (video_name, ))
-		return log_db_cursor.fetchone()
-	elif action is "list":
-		log_db_cursor.execute("SELECT * FROM youtube_videos")
-		result = []
-		for video_data in log_db_cursor.fetchall():
-			result.append([video_data[0], video_data[1]])
-		return result
-
-# print public channels nicely
-def print_channel(channel):
-	print("{0.blue} -- {1}{2.name} {3}[{2.id}]{4.off}".format(Text, Text.red if channel.type == discord.ChannelType.voice else Text.cyan, channel, Text.magenta if channel.type == discord.ChannelType.voice else Text.yellow, Attributes))
-
-# print private channels nicely
-def print_private_channel(channel):
-	print("{0.green}@{2.off}{1.user.name} {0.cyan}[{1.id}]{2.off}".format(Text, channel, Attributes))
-
-# update servers
-def update_server_list(servers, do_in_channels):
-	for server in servers:
-		print("\n{0.green}{1.name} {2.off}[{1.id}] ({0.cyan}{1.owner.name}{2.off}#{0.yellow}{1.owner.discriminator}{2.off})".format(Text, server, Attributes))
-		if not do_in_channels == None:
-			for channel in server.channels:
-				do_in_channels(channel)
-	print("\n\n")
-
-# get a user by name and/or nick
-def find_user(server, name):
-	user = discord.utils.get(server.members, name=name)
-	if user == None:
-		user = discord.utils.get(server.members, display_name=name)
-	return user
-
-# capture results from stdout
-@contextlib.contextmanager
-def stdoutIO(stdout=None):
-	old = sys.stdout
-	if stdout == None:
-		stdout = io.StringIO()
-	sys.stdout = stdout
-	yield stdout
-	sys.stdout = old
-
-# get full youtube link
-def expand_video_url(text):
-	url = text
-	if text.startswith('$') == True:
-		url = manage_saved_videos("load", None, text.lstrip('$'))[1]
-	if not url.startswith("http") == True:
-		url = "https://www.youtube.com/watch?v=" + url
-	return url
-
-# is a user tracking mentions?
-def is_user_tracked(channel : discord.Channel, user : discord.Member, verbose=False):
-	if user.id in user_tracking:
-		user_tracker = user_tracking[user.id]
-		if channel.server.id in user_tracker:
-			user_info = user_tracker[channel.server.id]
-			if verbose == False:
-				return user_info["whole_server"] or channel.id in user_info["channel_ids"]
-			else:
-				return [user_info["whole_server"] or channel.id in user_info["channel_ids"], user_info["whole_server"]]
-		else:
-			return False if verbose == False else [False, False]
-	else:
-		return False if verbose == False else [False, False]
-
-# change user tracking
-def set_user_track(channel : discord.Channel, user : discord.Member, mentions_tracked, whole_server=None):
-	sql = ''
-	if user.id in user_tracking:
-		user_tracker = user_tracking[user.id]		
-		if channel.server.id in user_tracker:
-			user_info = user_tracker[channel.server.id]
-			if channel.id in user_info["channel_ids"]:
-				if mentions_tracked == False:
-					user_tracking[user.id][channel.server.id]["channel_ids"].remove(channel.id)
-					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
-				else:
-					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
-			else:
-				if mentions_tracked == True:
-					user_tracking[user.id][channel.server.id]["channel_ids"].append(channel.id)
-					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
-				else:
-					user_tracking[user.id][channel.server.id]["whole_server"] = user_info["whole_server"] if whole_server == None else whole_server
-			
-			sql = 0
-		else:
-			user_info = {"user_id": user.id, "server_id": channel.server.id, "channel_ids": [channel.id] if mentions_tracked == True else [], "whole_server": whole_server if not whole_server == None else False}
-			user_tracking[user.id][channel.server.id] = user_info
-			sql = 1
-	else:
-		user_tracking[user.id] = {}
-		user_info = {"user_id": user.id, "server_id": channel.server.id, "channel_ids": [channel.id] if mentions_tracked == True else [], "whole_server": whole_server if not whole_server == None else False}
-		user_tracking[user.id][channel.server.id] = user_info
-		sql = 1
-	if sql == 1:
-		log_db_cursor.execute("INSERT INTO user_tracking VALUES (?,?,?,?)", (user.id, channel.server.id, ",".join(user_tracking[user.id][channel.server.id]["channel_ids"]), "yes" if whole_server == True else "no"))
-	else:
-		log_db_cursor.execute("UPDATE user_tracking SET user_id=?,server_id=?,channel_ids=?,whole_server=? WHERE server_id=?", (user.id, channel.server.id, ",".join(user_tracking[user.id][channel.server.id]["channel_ids"]), "yes" if whole_server == True else "no", channel.server.id))
-
-# End helper funcs
-
-"""
-			     ╔ ╗
-		     ╔ ╔ ╗ ╗
-		   ╔ ╔ ╔ ╗ ╗ ╗
-	   ╔ ┌─┬─┐ ┌─┬─┐ ╗
-	  ║──┤ │ ├─┤ │ ├─ ║
-	  ╠══│ ├─┼─┼─┤ │══╣                 why?
-	  ║──┤ │ ├─┤ │ ├──║               idk
-	  ╠══│ ├─┼─┼─┤ │══╣
-	 ╔╣_______________╠╗
-	 ║║▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄║║
-	 ║║/|\|/|\|/|\|/|\║║
-	 ║║¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯║║
-	'WW'             'WW'
-"""
-
-""" #				#
-	#				#
-	#				#
-		Commands
-	#				#
-	#				#
-	#				#
-"""
-
-# change admin status
-async def manage_admins(ctx, call, command, args):
-	user = args[1] if len(args) > 1 else None
-	method = args[0] if len(args) > 0 else "None"
-	if ctx.author.id in owner_ids:
-		if not isinstance(user, discord.Member) == True: # are we dealing with a string?
-			user = find_user(ctx.server, user)
-		if method.lower() in ["remove", 'r']:
-			if not user == None:
-				if is_admin(user) == True:
-					log_db_cursor.execute("DELETE FROM allowed_users WHERE user_id=?", (user.id, ))
-					await client.send_message(ctx.author, "Removed admin '{}'".format(user.name + "#" + user.discriminator))
-		elif method.lower() in ["add", 'a']:
-			if not user == None:
-				if is_admin(user) == False:
-					log_db_cursor.execute("INSERT INTO allowed_users VALUES (?,?)", (user.id, user.name + "#" + user.discriminator))
-					await client.send_message(ctx.author, "Added admin '{}'".format(user.name + "#" + user.discriminator))
-		elif method.lower() in ['l', "list", "show"]:
-			admins = []
-			log_db_cursor.execute("SELECT * FROM allowed_users")
-			for user in log_db_cursor.fetchall():
-				admins.append("{} [{}]".format(user[1], user[0]))
-			await client.send_message(ctx.channel, "```xl\n{}\n```".format("\n".join(admins)))
-
-# eval code yey
-async def eval_code(ctx, call, command, args):
-	code = args[0] if len(args) > 0 else None
-	if ctx.author.id in owner_ids:
-		if not code == None:
-			try:
-				with stdoutIO() as s:
-					exec(code)
-
-				result = s.getvalue()
-				result = '' if result == None else result
-				cutoff = [result[x:x + 1800] for x in range(0, len(result), 1800)]
-
-				if len(cutoff) > 1:
-					if len(cutoff) < 3:
-						for message in cutoff:
-							await client.send_message(ctx.channel, "```py\n{}\n```".format(message))
-							time.sleep(.21)
-					else:
-						await client.send_message(ctx.channel, "```py\n{}\n```".format(cutoff[0]))
-						await client.send_message(ctx.channel, "```\n{} pages not sent\n```".format(len(cutoff) - 1))
-				else:
-					await client.send_message(ctx.channel, "```py\n{}\n```".format(result))
-			except Exception as e:
-				await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
-
-# leave a specific server
-async def leave_server(ctx, call, command, args):
-	if ctx.author.id in owner_ids:
-		server_name = args[0] if len(args) > 0 else None
-		if not server_name == None:
-			server = discord.utils.get(client.servers, name=server_name)
-			if not server == None:
-				await client.leave_server(server)
-				global channel_count, voice_count, server_count
-				for channel in server.channels:
-					if channel.type == discord.ChannelType.text:
-						channel_count -= 1
-					elif channel.type == discord.ChannelType.voice:
-						voice_count -= 1
-				server_count -= 1
-				await client.send_message(ctx.channel, "```xl\nSuccessfully left '{}'\n```".format(server.name))
-			else:
-				await client.send_message(ctx.channel, "```xl\nCannot find '{}'\n```".format(server_name))
-
-# rip
-async def snake_quit(ctx, call, command, args):
-	if ctx.author.id in owner_ids:
-		if Settings.get("notify_on_exit") == True:
-			await client.send_message(ctx.channel, "rip {}".format(call))
-		log_db.commit()
-		await client.logout()
-
-# debug one expression
-async def debug_code(ctx, call, command, args):
-	if ctx.author.id in owner_ids:
-		code = args[0] if len(args) > 0 else None
-		if not code == None:
-			result = None
-			try:
-				result = eval(code)
-			except Exception as e:
-				await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
-				return
-
-			if asyncio.iscoroutine(result):
-				result = await result
-
-			result = str(result)
-			cutoff = [result[x:x + 1800] for x in range(0, len(result), 1800)]
-
-			if len(cutoff) > 1:
-				if len(cutoff) < 3:
-					for message in cutoff:
-						await client.send_message(ctx.channel, "```py\n{}\n```".format(message))
-						time.sleep(.21)
-				else:
-					await client.send_message(ctx.channel, "```py\n{}\n```".format(cutoff[0]))
-					await client.send_message(ctx.channel, "```\n{} pages not sent\n```".format(len(cutoff) - 1))
-			else:
-				await client.send_message(ctx.channel, "```py\n{}\n```".format(result))
-
-# clear snakes messages
-async def remove_self_messages(ctx, call, command, args):
-	count = args[0] if len(args) > 0 else 1
-	if (is_admin(ctx.author) == True):
-		messages_removed = 0
-		count = int(count)
-		async for message in client.logs_from(ctx.channel):
-			if message.author == client.user:
-				if messages_removed < count:
-					await client.delete_message(message)
-					messages_removed += 1
-					time.sleep(.21)
-
-# change a setting value
-async def change_setting(ctx, call, command, args):
-	if is_admin(ctx.author) == True:
-		setting = args[0] if len(args) > 0 else None
-		option = args[1] if len(args) > 1 else "None"
-		if option.lower() in ["yes", "on", "y"]:
-			Settings.set(setting, True)
-			await client.send_message(ctx.channel, "Turned '{}' on".format(setting))
-		elif option.lower() in ["no", "n", "off"]:
-			Settings.set(setting, False)
-			await client.send_message(ctx.channel, "Turned '{}' off".format(setting))
-		else:
-			Settings.set(setting, option)
-			await client.send_message(ctx.channel, "Set '{}' to '{}'".format(setting, option))
-
-# player control
-async def manage_players(ctx, call, command, args):
-	if is_admin(ctx.author) == True:
-		method = args[0] if len(args) > 0 else "None"
-		channel = discord.utils.get(ctx.server.channels, name=args[1], type=discord.ChannelType.voice) if len(args) > 1 else None
-		notify_channel = Settings.get("notify_channel")
-		if hasattr(ctx, "server") == True:
-			if method.lower() in ['l', "leave", "exit"]:
-				voice_client = client.voice_client_in(ctx.server)
-				if not voice_client == None:
-					await voice_client.disconnect()
-					del voice_channels[voice_client]
-					if notify_channel == True:
-						await client.send_message(ctx.channel, "```xl\nLeft '{}' on '{}'\n```".format(channel.name, ctx.server.name))
-			elif method.lower() in ['j', "join"]:
-				if not channel == None:
-					voice_client = client.voice_client_in(ctx.server)
-				if voice_client == None:
-					voice_client = await client.join_voice_channel(channel)
-					voice_channels[voice_client] = {}
-					if notify_channel == True:
-						await client.send_message(ctx.channel, "```xl\nJoined '{}' on '{}'\n```".format(channel.name, ctx.server.name))
-			elif method.lower() in ['m', "move", "goto"]:
-				if not channel == None:
-					voice_client = client.voice_client_in(ctx.server)
-				if not voice_client == None:
-					await voice_client.move_to(channel)
-					if notify_channel == True:
-						await client.send_message(ctx.channel, "```xl\Moved to '{}' on '{}'\n```".format(channel.name, ctx.server.name))
-			else:
-				voice_client = client.voice_client_in(ctx.server)
-				if not voice_client == None:
-					voice_player = voice_channels[voice_client]["player"]
-					if not voice_player == None:
-						if method.lower() in ['s', "stop"]:
-							voice_player.stop()
-						elif method.lower() in ['p', "pause"]:
-							voice_player.pause()
-						elif method.lower() in ['r', "res", "resume"]:
-							if voice_player.is_done() == True:
-								voice_player.start()
-							else:
-								voice_player.resume()
-						elif method.lower() in ['v', "vol", "volume"]:
-							vol = float(args[1] if len(args) > 1 else 100.0) / 100.0
-							voice_player.volume = vol
-
-# remove others messages
-async def purge_messages(ctx, call, command, args):
-	user = args[0] if len(args) > 0 else None
-	count = args[1] if len(args) > 1 else None
-	if is_admin(ctx.author) == True:
-		if (not user == None) and (not count == None):
-			if str(user).lower() == "all":
-				messages_removed = 0
-				count = int(count)
+# discord: pip install -U git+https://github.com/Rapptz/discord.py@master#egg=discord.py[voice]
+
+# Imports
+import discord, asyncio, os, logging, sys, traceback, aiohttp, json
+from random import choice as rand_choice
+from bs4 import BeautifulSoup as b_soup
+from discord.ext import commands
+from datetime import datetime
+
+from cogs.utils import config, time, checks
+from cogs.utils.colors import paint, back, attr
+
+# Library logging
+discord_logger = logging.getLogger("discord")
+discord_logger.setLevel(logging.ERROR)
+
+
+class SnakeBot(commands.Bot):
+	def __init__(self, *args, **kwargs):
+		super().__init__(*args, **kwargs)
+		self.config = config.Config("config.json")
+		self.credentials = config.Config("credentials.json")
+		self.whitelist = config.Config("whitelist.json")
+		self.blacklist = config.Config("blacklist.json")
+		self.tag_list = config.Config("tags.json")
+		self.cust_ids = {}
+		self.boot_time = datetime.now()
+		self.commands_used = {}
+		self.color_emoji = lambda e: "{}{}".format(e, rand_choice(["", "\N{EMOJI MODIFIER FITZPATRICK TYPE-1-2}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-3}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-4}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-5}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-6}"]))
+
+		for filename in os.listdir("cogs"):
+			if os.path.isfile("cogs/" + filename) and filename.startswith("command_"):
+				name = filename[8:-3]
+				cog_name = "cogs.command_" + name
 				try:
-					async for message in client.logs_from(ctx.channel):
-						if messages_removed < count:
-							await client.delete_message(message)
-							messages_removed += 1
-							time.sleep(.21)
+					self.load_extension(cog_name)
 				except Exception as e:
-					await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
-				return
+					print("Failed to load {}: [{}]: {}".format(paint(name, "red"), type(e).__name__, e))
 
-			if not isinstance(user, discord.Member) == True:
-				user = find_user(ctx.server, user)
-			messages_removed = 0
-			count = int(count)
-			try:
-				async for message in client.logs_from(ctx.channel):
-					if message.author == user:
-						if messages_removed < count:
-							await client.delete_message(message)
-							messages_removed += 1
-							time.sleep(.21)
-			except Exception as e:
-				await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+		self.log = logging.getLogger()
+		self.log.setLevel(logging.INFO)
+		self.log.addHandler(
+			logging.FileHandler(filename="snake.log", encoding="utf-8", mode='w')
+		)
 
-# manage saved videos
-async def manage_user_videos(ctx, call, command, args):
-	option = args[0] if len(args) > 0 else "None"
-	yt_name = args[1] if len(args) > 1 else None
-	yt_id = args[2] if len(args) > 2 else None
-	if option.lower() in ['s', "save"]:
-		if (not yt_id == None) and (not yt_name == None):
-			manage_saved_videos("save", yt_id, yt_name, ctx.author)
-	elif option.lower() in ["del", "delete", 'd']:
-		if not yt_name == None:
-			manage_saved_videos("remove", None, yt_name, ctx.author)
-	elif option.lower() in ['l', "ls", "list"]:
-		result = []
-		for video in manage_saved_videos("list"):
-			result.append("\"{}\" - \"{}\"".format(video[0], video[1]))
-		await client.send_message(ctx.channel, "```xl\n{}\n```".format("\n".join(result)))
+	async def chat(self, user : discord.User, text):
+		user_id = user.id
+		chat_data = {"botid": self.config.get("pb_bot_id"), "input": text}
+		if user_id in self.cust_ids:
+			chat_data.update({"custid": self.cust_ids[user_id]})
 
-# play youtube videos
-async def play_youtube_video(ctx, call, command, args):
-	if opus_loaded == False:
-		await client.send_message(ctx.channel, "```diff\n- Opus audio library is not loaded, cannot play\n```")
-		return
-	video_url = expand_video_url(args[0] if len(args) > 0 else "None")
-	voice_channel = discord.utils.get(ctx.server.channels, name=args[1], type=discord.ChannelType.voice) if len(args) > 1 else None
-	voice_client = None
-	video_player = None
+		async def fetch():
+			with aiohttp.ClientSession() as session:
+				async with session.post("http://www.pandorabots.com/pandora/talk-xml", data=chat_data) as response:
+					if response.status != 200:
+						return response.status
+					response_text = await response.text()
+					chat_soup = b_soup(response_text, "lxml")
+					cust_id = chat_soup.find("result")["custid"]
+					answer = chat_soup.find("that").text.strip()
+					self.cust_ids[user_id] = cust_id
+					return answer
 
-	if not video_url == "None":
-		if voice_channel == None:
-			voice_client = client.voice_client_in(ctx.server)
-			if voice_client == None:
-				return # tell them there is no connection?
-		else:
-			voice_client = discord.utils.get(client.voice_clients, channel=voice_channel)
-			if not voice_client == None:
-				if voice_channels[voice_client]["player"].is_done() == True: # IndexError upcoming?
-					voice_client.move_to(voice_channel)
-				else:
-					await client.send_message(ctx.channel, "```diff\n- Cannot play video, something else is playing\n```")
-					return
+		success = False
+		while not success:
+			chat_result = await fetch()
+			if isinstance(chat_result, str):
+				success = True
+				return chat_result
 			else:
-				voice_client = await client.join_voice_channel(voice_channel)
-				voice_channels[voice_client] = {}
-		try:
-			video_player = await voice_client.create_ytdl_player(video_url) # , after=asyncio.run_coroutine_threadsafe(complete(), client.loop).result()
-			voice_channels[voice_client]["player"] = video_player
-		except Exception as e:
-			await client.send_message(ctx.channel, "```py\nCannot play video\n{}: {}\n```".format(type(e).__name__, str(e)))
-			return
-		await client.send_message(ctx.channel, ytplayer_info.format(video_player, voice_client.channel))
-		video_player.start()
+				self.log.warning("Could not fetch chat data, retrying. [{}]".format(chat_result))
 
-# send dectalk speech
-async def play_speech_data(ctx, call, command, args):
-	if opus_loaded == False:
-		await client.send_message(ctx.channel, "```diff\n- Opus audio library is not loaded, cannot play\n```")
-		return
-	speech_text = args[0] if len(args) > 0 else None
-	voice_channel = discord.utils.get(ctx.server.channels, name=args[1], type=discord.ChannelType.voice) if len(args) > 1 else None
+	async def update_servers(self):
+		results = [False, False]
 
-	if not speech_text == None:
-		if voice_channel == None:
-			voice_client = client.voice_client_in(ctx.server)
-			if voice_client == None:
-				return # nah, lets keep it quiet. we  have been
-		else:
-			voice_client = discord.utils.get(client.voice_clients, channel=voice_channel)
-			if not voice_client == None:
-				if voice_channels[voice_client]["player"].is_done() == True: #more IndexErrors
-					voice_client.move_to(voice_channel)
-				else:
-					await client.send_message(ctx.channel, "```diff\n- Cannot play, something else is playing\n```")
-					return
-			else:
-				voice_client = await client.join_voice_channel(voice_channel)
-				voice_channels[voice_client] = {}
-		try:
-			os.chdir("dectalk")
-			os.system("say.exe -w say.wav \"{}\"".format(speech_text.replace("\n", "")))
-			sound_player = voice_client.create_ffmpeg_player("say.wav")
-			voice_channels[voice_client]["player"] = sound_player
-			sound_player.start()
-			os.chdir("..")
-		except Exception as e:
-			await client.send_message(ctx.channel, "```py\n{}: {}\n```".format(type(e).__name__, str(e)))
+		bots_headers = {
+			"Authorization": self.credentials.get("bots_token"),
+			"Content-Type": "application/json"
+		}
 
-# follow player into voice channel
-async def join_player_voice(ctx, call, command, args):
-	if not ctx.author.voice_channel == None:
-		if client.voice_client_in(ctx.author.voice_channel) == None:
-			voice_client = await client.join_voice_channel(ctx.author.voice_channel)
-			voice_channels[voice_client] = {}
+		bots_data = json.dumps({
+			"server_count": len(self.servers)
+		})
 
-# get helpdocs
-async def get_help(ctx, call, command, args):
-	requested = args[0] if len(args) > 0 else None
-	if not requested == None:
-		if str(requested).lower() in help_strings:
-			await client.send_message(ctx.channel, help_strings[str(requested).lower()])
-	else:
-		await client.send_message(ctx.channel, help_docs)
+		carbon_data = json.dumps({
+			"servercount": len(self.servers)
+		})
 
-# insults :)
-async def get_insult(ctx, call, command, args):
-	if len(args) > 0:
-		for recipient in args:
-			if not isinstance(recipient, discord.Member) == True:
-				recipient = find_user(ctx.server, recipient)
-			if not recipient == None:
-				with aiohttp.ClientSession() as session:
-					async with session.get("http://insultgenerator.org/") as response:
-						if response.status == 200:
-							insult = re.search(r'<div class="wrap">\s*<br><br>(.+)</div>', str(await response.text()), re.I).group(1)
-							await client.send_message(recipient, html.unescape(insult))
-						pass
-	else:
 		with aiohttp.ClientSession() as session:
-			async with session.get("http://insultgenerator.org/") as response:
-				if response.status == 200:
-					insult = re.search(r'<div class="wrap">\s*<br><br>(.+)</div>', str(await response.text()), re.I).group(1)
-					await client.send_message(ctx.channel, html.unescape(insult))
+			async with session.post("https://bots.discord.pw/api/bots/{0.user.id}/stats".format(self), headers=bots_headers, data=bots_data) as response:
+				if str(response.status)[0] == '2':
+					js = await response.json()
+					if "error" not in js:
+						results[0] = True
+
+			async with session.post("https://www.carbonitex.net/discord/data/botdata.php?key={}".format(self.credentials.get("carbon_key")), data=carbon_data) as response:
+				if str(response.status)[0] == '2':
+					text = await response.text()
+					if text != "0 - no key?|":
+						results[1] = True
+		return results
+
+	async def post_log(self, content):
+		channel = self.get_channel("234512725554888705")
+		if channel is not None:
+			try:
+				await self.send_message(channel, content)
+			except:
 				pass
 
-# get oath url
-async def get_oauth_link(ctx, call, command, args):
-	permissions = discord.Permissions(70380553 )
-	oauth_url = discord.utils.oauth_url("181584771510566922", permissions)
-	await client.send_message(ctx.author, "Click the link below to add snake to your server\n{}".format(oauth_url))
+	async def on_command_error(self, error, ctx):
+		if isinstance(error, commands.NoPrivateMessage):
+			await self.send_message(ctx.message.author, "You cannot use this command in a private message")
 
-# info
-async def get_object_info(ctx, call, command, args):
-	item = args[0] if len(args) > 0 else None
-	if type(item).__name__ == "str":
-		user = find_user(ctx.server, item)
-		if not user == None:
-			item = user
-	if not item == None:
-		if isinstance(item, discord.Member) == True:
-			if not item == ctx.server.me:
-				await client.send_message(ctx.channel, member_info.format(
-					item,
-					"Yes" if item.bot == True else "No?",
-					", ".join(map(lambda x:str(x)[1:] if str(x).startswith('@') else str(x), item.roles)),
-					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
-					"{} ago ({})".format(get_elapsed_time(item.joined_at + utc_offset, datetime.utcnow() + utc_offset), (item.joined_at + utc_offset).strftime(time_format)),
-					"" if item.game == None else ", playing {}".format(item.game.name)
-				))
-			else:
-				await client.send_message(ctx.channel, client_info.format(
-					client.user,
-					"{} ago ({})".format(get_elapsed_time(client.user.created_at + utc_offset, datetime.utcnow() + utc_offset), (client.user.created_at + utc_offset).strftime(time_format)),
-					"{} ({})".format(get_elapsed_time(client.start_time, datetime.utcnow() + utc_offset), client.start_time.strftime(time_format)),
-					"{} public channels ({} text, {} voice), {} private channels".format(channel_count + voice_count, channel_count, voice_count, private_count),
-					"{} servers ({})".format(server_count, "'{}'".format("', '".join(list(map(str, client.servers))))),
-					".".join(list(map(str,list(discord.version_info)[:3]))),
-					".".join(list(map(str,list(sys.version_info)[:3]))),
-					"" if ctx.server.me.game == None else ctx.server.me.game.name
-				))
+		elif isinstance(error, commands.DisabledCommand):
+			await self.send_message(ctx.message.author, "This command is disabled")
 
-		elif isinstance(item, discord.Role) == True:
-			await client.send_message(ctx.channel, role_info.format(
-				item,
-				"Yes" if item.hoist == True else "No",
-				str(item.colour).upper(),
-				"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
-			))
-		elif isinstance(item, discord.Channel) == True:
-			if item.type == discord.ChannelType.text:
-				await client.send_message(ctx.channel, text_channel_info.format(
-					item,
-					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
-				))
-			else:
-				await client.send_message(ctx.channel, voice_channel_info.format(
-					item,
-					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
-					len(item.voice_members),
-					item.bitrate // 1000,
-					", ".join(map(lambda m: m.name, item.voice_members)) if len(item.voice_members) > 0 else "No one",
-					item.user_limit if item.user_limit > 0 else '∞'
-				))
+		elif isinstance(error, commands.CommandOnCooldown):
+			await self.send_message(ctx.channel, "{} slow down! Try again in {:.1f} seconds".format(ctx.author.mention, error.retry_after))
+
+		elif isinstance(error, commands.CommandInvokeError):
+			original_name = error.original.__class__.__name__
+			print("In {}:".format(paint(ctx.command.qualified_name, "red")))
+			traceback.print_tb(error.original.__traceback__)
+			print("{}: {}".format(paint(original_name, "red"), error.original))
+
+		# Bad or missing argument alerts??
 		else:
-			item = str(item)
-			voice_channel = discord.utils.get(ctx.server.channels, name=item)
-			if item.lower() == "server":
-				item = ctx.server
-				server_channel_count, server_voice_count = 0,0
-				for channel in item.channels:
-					if channel.type == discord.ChannelType.voice:
-						server_voice_count += 1
-					elif channel.type == discord.ChannelType.text:
-						server_channel_count +=1
-				await client.send_message(ctx.channel, server_info.format(
-					item,
-					"{} member{}".format(len(item.members), 's' if len(item.members) > 1 or len(item.members) == 0 else ""),
-					"{} text channel{}, {} voice channel{} ({} total)".format(server_channel_count, 's' if server_channel_count > 1 or server_channel_count == 0 else "", server_voice_count, 's' if server_voice_count > 1 or server_voice_count == 0 else "", server_channel_count + server_voice_count),
-					"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
-					", ".join(map(lambda x:str(x)[1::] if str(x).startswith("@") else str(x), item.roles))
-				))
-			elif item.lower() == "client":
-				await client.send_message(ctx.channel, client_info.format(
-					client.user,
-					"{} ago ({})".format(get_elapsed_time(client.user.created_at + utc_offset, datetime.utcnow() + utc_offset), (client.user.created_at + utc_offset).strftime(time_format)),
-					"{} ({})".format(get_elapsed_time(client.start_time, datetime.utcnow() + utc_offset), client.start_time.strftime(time_format)),
-					"{} public channels ({} text, {} voice), {} private channels".format(channel_count + voice_count, channel_count, voice_count, private_count),
-					"{} servers ({})".format(server_count, ", ".join(list(map(str, client.servers)))),
-					".".join(list(map(str,list(discord.version_info)[:3]))),
-					".".join(list(map(str,list(sys.version_info)[:3]))),
-					"" if ctx.server.me.game == None else ctx.server.me.game.name
-				))
-			else:
-				channel = discord.utils.get(ctx.server.channels, name=item, type=discord.ChannelType.voice)
-				role = discord.utils.get(ctx.server.roles, name=item)
-				if (not channel == None) and (role == None):
-					item = channel
-					await client.send_message(ctx.channel, voice_channel_info.format(
-						item,
-						"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format)),
-						len(item.voice_members),
-						item.bitrate // 1000,
-						", ".join(map(lambda m: m.name, item.voice_members)) if len(item.voice_members) > 0 else "No one",
-						item.user_limit if item.user_limit > 0 else '∞'
-					))
-				elif (not role == None) and (channel == None):
-					item = role
-					await client.send_message(ctx.channel, role_info.format(
-						item,
-						"Yes" if item.hoist == True else "No",
-						str(item.colour).upper(),
-						"{} ago ({})".format(get_elapsed_time(item.created_at + utc_offset, datetime.utcnow() + utc_offset), (item.created_at + utc_offset).strftime(time_format))
-					))
-				else:
-					await client.send_message(ctx.channel, "Unable to retrieve information, '{}' matches multiple objects.".format(item))
+			print("{}: {}".format(paint(type(error).__name__, "red"), error))
 
-# get docs for soandso
-async def get_object_docs(ctx, call, command, args):
-	item = args[0] if len(args) > 0 else None
-	if not item == None:
-		item = str(item).lower()
-		await client.send_message(ctx.channel, "{}discord.{}".format(base_docs_url, item.capitalize()))
-	else:
-		await client.send_message(ctx.channel, base_docs_url)
+	async def on_command(self, command, ctx):
+		if command.name not in self.commands_used:
+			self.commands_used[command.name] = 0
+		else:
+			self.commands_used[command.name] += 1
+		message = ctx.message
+		destination = None
+		if message.channel.is_private:
+			destination = "Private Message"
+		else:
+			destination = "[{0.server.name} #{0.channel.name}]".format(message)
+		self.log.info("{1}: {0.author.name}: {0.clean_content}".format(message, destination))
 
-# manage tags, yay
-async def manage_user_tags(ctx, call, command, args):
-	method = str(args[0] if len(args) > 0 else None).lower()
-	name = args[1] if len(args) > 1 else None
-	content = args[2] if len(args) > 2 else None
-	if method in ["list", 'l']:
-		log_db_cursor.execute("SELECT * FROM user_tags")
-		tag_list = []
-		for tag in log_db_cursor.fetchall():
-			tag_list.append("^'" + tag[0] + "'" if tag[2] == ctx.author.id else "'" + tag[0] + "'")
-		await client.send_message(ctx.channel, "**All Saved Tags**:\n```xl\n{}\n```".format(", ".join(tag_list)))
-	elif method in ["get", 'g']:
-		if not name == None:
-			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=?", (name, ))
-			tag = log_db_cursor.fetchone()
-			if not tag == None:
-				await client.send_message(ctx.channel, "**{}** ({}):\n\n{}".format(tag[0], tag[3], tag[1]))
-			else:
-				await client.send_message(ctx.channel, "Tag `{}` does not exist".format(name))
-	elif method in ["add", 'a']:
-		if (not name == None) and (not content == None):
-			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=?", (name, ))
-			if log_db_cursor.fetchone() == None:
-				log_db_cursor.execute("INSERT INTO user_tags VALUES (?,?,?,?)", (name, content, ctx.author.id, "{}#{}".format(ctx.author.name, ctx.author.discriminator)))
-				log_db.commit()
-				await client.send_message(ctx.channel, "Tag `{}` created successfully".format(name))
-			else:
-				await client.send_message(ctx.channel, "Tag `{}` already exists".format(name))
-	elif method in ["edit", 'e']:
-		if (not name == None) and (not content == None):
-			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=? and tag_owner=?", (name, ctx.author.id))
-			if not log_db_cursor.fetchone() == None:
-				log_db_cursor.execute("UPDATE user_tags SET tag_name=?,tag_content=?,tag_owner=?,tag_owner_name=? WHERE tag_name=?", (name, content, ctx.author.id, "{}#{}".format(ctx.author.name, ctx.author.discriminator), name))
-				log_db.commit()
-				await client.send_message(ctx.channel, "Tag `{}` edited successfully".format(name))
-			else:
-				await client.send_message(ctx.channel, "Tag `{}` does not exist or is not owner by you".format(name))
-	elif method in ["del", "delete", 'd']:
-		if not name == None:
-			log_db_cursor.execute("SELECT * FROM user_tags WHERE tag_name=? and tag_owner=?", (name, ctx.author.id))
-			if not log_db_cursor.fetchone() == None:
-				log_db_cursor.execute("DELETE FROM user_tags WHERE tag_name=?", (name, ))
-				log_db.commit()
-				await client.send_message(ctx.channel, "Tag `{}` deleted successfully".format(name))
-			else:
-				await client.send_message(ctx.channel, "Tag `{}` does not exist or is not owner by you".format(name))
-
-# whats he playing
-async def change_snake_game(ctx, call, command, args):
-	game_name = args[0] if len(args) > 0 else None
-	game = None
-	if not game_name == None:
-		game = discord.Game(name=game_name, url="http://twitch.tv/logout", type=1)
-	await client.change_status(game=game, idle=False)
-
-# xkcd, yey
-async def get_xkcd_comic(ctx, call, command, args):
-	xkcd_id = args[0] if len(args) > 0 else None
-	await client.send_typing(ctx.channel)
-	url, data = '',''
-	if xkcd_id == None:
-		url = xkcd_rand_comic
-	else:
-		url = "http://xkcd.com/{}".format(xkcd_id)
-	with aiohttp.ClientSession() as session:
-		async with session.get(url) as response:
-			if response.status == 200:
-				data = await response.text()
-			pass
-	xkcd_match = re.search(r'<div id="ctitle">(?P<title>[\w ]+).*Permanent\slink\sto\sthis\scomic:\s(?P<link>[^<]+).*Image\sURL\s\(for\shotlinking\/embedding\):\s(?P<url>[^ ]+)<div', data, re.S)
-	title, url, link = xkcd_match.group("title"), xkcd_match.group("url")[:-1], xkcd_match.group("link")
-	await upload_file(url, "xkcd/" + url[28:], ctx.channel, "{} (<{}>)".format(title, link))
-
-# uptime
-async def get_uptime(ctx, call, command, args):
-	elapsed_time = get_elapsed_time(client.start_time, datetime.utcnow() + utc_offset)
-	formatted_time = client.start_time.strftime(time_format)
-	await client.send_message(ctx.channel, "```xl\nSnake has been running for {} ({})\n```".format(elapsed_time, formatted_time))
-
-# github :)
-async def get_source(ctx, call, command, args):
-	await client.send_message(ctx.channel, "https://github.com/TickerOfTime/snake")
-
-# what song is playing
-async def get_playing(ctx, call, command, args):
-	voice_client = client.voice_client_in(ctx.server)
-	if not voice_client == None:
-		channel = voice_channels[voice_client]
-		if "player" in channel:
-			if hasattr(channel["player"], "yt") == True:
-				await client.send_message(ctx.channel, ytplayer_info.format(channel["player"], voice_client.channel))
+	async def on_message(self, message):
+		if not message.channel.is_private:
+			if message.author.bot or message.channel.id in self.blacklist.get("channel_ignore") or message.server.id in self.blacklist.get("server_ignore"):
 				return
-	await client.send_message(ctx.channel, "```xl\nNothing is playing right now\n```")
 
-# list settings
-async def list_settings(ctx, call, command, args):
-	option = args[0] if len(args) > 0 else None
-	setting = Settings.get(option)
-	if setting == None:
-		await client.send_message(ctx.channel, "```xl\n{}\n```".format("\n".join(Settings.list())))
-	else:
-		await client.send_message(ctx.channel, "```xl\n'{}' is '{}'\n```".format(option, "on" if setting == True else "off"))
+			if (message.content.startswith(self.user.mention) and message.author.id not in self.blacklist.get("chat")) or message.channel.id in self.whitelist.get("chat"):
+				chat_text = " ".join(message.clean_content.split()[1:])
+				response = await self.chat(message.author, chat_text)
+				await self.send_message(message.channel, response)
+				return
 
-# memes
-async def make_meme(ctx, call, command, args):
-	meme_name = str(args[0] if len(args) > 0 else None)
-	if meme_name.lower() in meme_list:
-		text_1 = args[1] if len(args) > 1 else None
-		text_2 = args[2] if len(args) > 2 else None
-		if (not text_1 == None) and (not text_2 == None):
-			url = "http://memegen.link/{}/{}/{}.jpg".format(meme_name.lower(), quote(text_1.replace(" ", "-")), quote(text_2.replace(" ", "-")))
-			await upload_file(url, "{}.jpg".format(meme_name.lower()), ctx.channel)
-		elif (text_1 == None) or (text_2 == None):
-			await client.send_message(ctx.channel, "```diff\n- You need two text snippets to make a meme\n```")
-	elif meme_name.lower() in ["list", 'l']:
-		result = []
-		for K, V in meme_list.items():
-			result.append("{} - {}".format(K, V))
-			if len(result) > 11:
-				await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
-				result.clear()
-		await client.send_message(ctx.author, "```xl\n{}\n```".format("\n".join(result)))
+			if "(╯°□°）╯︵ ┻━┻" in message.clean_content and message.server.id in self.whitelist.get("unflip"):
+				await self.send_message(message.channel, "┬─────────────────┬ ノ(:eye:▽:eye:ノ)")
 
-# cross server chat
-async def cross_server_chat(ctx, call, command, args):
-	if ctx.server == None:
-		await client.send_message(ctx.channel, "```diff\n- Cannot chat from a private message\n```")
-		return
-	channel_name = args[0] if len(args) > 0 else None
-	message_to_send = args[1] if len(args) > 1 else None
-	server_name = args[2] if len(args) > 2 else None
-	if (not channel_name == None) and (not message_to_send == None):
-		if not server_name == None:
-			channel = discord.utils.get(client.get_all_channels(), server__name=server_name, name=channel_name)
-		else:
-			channel = discord.utils.get(ctx.server.channels, name=channel_name)
-		if channel == None and server_name == None:
-			await client.send_message(ctx.channel, "```diff\n- Channel '{}' not found\n```".format(channel_name))
-			return
-		elif (channel == None) and (not server_name == None):
-			await client.send_message(ctx.channel, "```diff\n- Channel '{}' on '{}' not found\n```".format(channel_name, server_name))
+
+		if message.author.id not in self.blacklist.get("command"):
+			await self.process_commands(message)
+
+	async def on_ready(self):
+		print("Logged in as {}#{} [{}]".format(paint(self.user.name, "cyan"), paint(self.user.discriminator, "yellow"), paint(self.user.id, "green")))
+		self.start_time = datetime.now()
+		self.boot_duration = time.get_ping_time(self.boot_time, self.start_time)
+		print("Loaded in {}".format(self.boot_duration))
+
+	async def on_server_join(self, server):
+		await self.post_log("Joined **{0.name}** [{0.id}] (owned by **{0.owner.display_name}**#{0.owner.discriminator} [{0.owner.id}]) ({1} total servers)".format(server, len(self.servers)))
+		await self.update_servers()
+
+	async def on_server_remove(self, server):
+		await self.post_log("Left **{0.name}** [{0.id}] (owned by **{0.owner.display_name}**#{0.owner.discriminator} [{0.owner.id}]) ({1} total servers)".format(server, len(self.servers)))
+		await self.update_servers()
+
+bot = SnakeBot(command_prefix="snake ", description="\nHsss! Go to discord.gg/qC4ancm for help!\n", help_attrs=dict(hidden=True), command_not_found="Command '{}' does not exist", command_has_no_subcommands="Command '{0.name}'' does not have any subcommands")
+
+@bot.group(invoke_without_command=True, name="cog", brief="manage cogs")
+@checks.is_owner()
+async def manage_cogs(name : str, action : str):
+	cog_name = "cogs.command_" + name
+	print(cog_name, bot.extensions.get(cog_name), action)
+	action = action.lower()
+	if action == "load":
+		if bot.extensions.get(cog_name) is not None:
+			await bot.say("Cog `{}` is already loaded".format(name))
 			return
 		try:
-			await client.send_message(channel,"{} - #{}\n**Message from {}#{}:**\n\n{}\n\n:information_source: Reply to this message with `snake chat {} <message>{}`".format(ctx.server.name,ctx.channel.name,ctx.author.display_name,ctx.author.discriminator,message_to_send, ctx.channel.name, "" if channel.server.name == ctx.server.name else " '" + ctx.server.name + "'"))
+			bot.load_extension(cog_name)
 		except Exception as e:
-			await client.send_message(ctx.channel,"```py\n{}: {}\n```".format(type(e).__name__,str(e)))
+			await bot.say("Failed to load `{}`: [{}]: {}".format(name, type(e).__name__, e))
+			return
+		await bot.say("Loaded `{}`".format(name))
 
-# get a list of permissions
-async def get_permissions(ctx, call, command, args):
-	permission_list = ctx.channel.permissions_for(ctx.server.me)
-	fmt = lambda x: "yes" if x == True else "no"
-	await client.send_message(ctx.channel,permission_info.format(
-		fmt(permission_list.create_instant_invite),
-		fmt(permission_list.kick_members),
-		fmt(permission_list.ban_members),
-		fmt(permission_list.manage_channels),
-		fmt(permission_list.manage_server),
-		fmt(permission_list.read_messages),
-		fmt(permission_list.send_messages),
-		fmt(permission_list.send_tts_messages),
-		fmt(permission_list.manage_messages),
-		fmt(permission_list.embed_links),
-		fmt(permission_list.attach_files),
-		fmt(permission_list.read_message_history),
-		fmt(permission_list.mention_everyone),
-		fmt(permission_list.connect),
-		fmt(permission_list.speak),
-		fmt(permission_list.mute_members),
-		fmt(permission_list.deafen_members),
-		fmt(permission_list.move_members),
-		fmt(permission_list.use_voice_activation),
-		fmt(permission_list.change_nicknames),
-		fmt(permission_list.manage_nicknames),
-		fmt(permission_list.manage_roles),
-		"is" if permission_list.administrator == True else "is not"
-	))
+	elif action == "unload":
+		if bot.extensions.get(cog_name) is None:
+			await bot.say("Cog `{}` is not loaded".format(name))
+			return
+		try:
+			bot.unload_extension(cog_name)
+		except Exception as e:
+			await bot.say("Failed to unload `{}`: [{}]: {}".format(name, type(e).__name__, e))
+			return
+		await bot.say("Unloaded `{}`".format(name))
 
-# user tracking
-async def manage_user_tracking(ctx, call, command, args):
-	if ctx.server == None:
-		await client.send_message(ctx.author, "```diff\n- You cannot track mentions in a private channel\n```")
-		return
-	track = args[0] if len(args) > 0 else None
-	whole_server = args[1] if len(args) > 1 else None
-	if not track == None:
-		track = str(track).lower()
-		whole_server = str(whole_server).lower()
-		whole_server = True if whole_server in ["yes", 'y'] else False
-		if track in ["yes", 'y']:
-			set_user_track(ctx.channel, ctx.author, True, whole_server)
-			await client.send_message(ctx.channel, ":ballot_box_with_check: You will be messaged if you are mentioned in this {}".format("channel" if whole_server == False else "server"))
-		elif track in ["no", 'n']:
-			set_user_track(ctx.channel, ctx.author, False, whole_server)
-			await client.send_message(ctx.channel, ":ballot_box_with_check: You will not be messaged if you are mentioned in this {}".format("channel" if whole_server == False else "server"))
-		elif track in ["status", 's', 'c', "check"]:
-			status = is_user_tracked(ctx.channel, ctx.author, True)
-			await client.send_message(ctx.channel, ":{}: You will {} messaged if you are mentioned in this {}".format("ballot_box_with_check" if status[0] == True else "x", "be" if status[0] == True else "not be", "server" if status[1] == True else "channel"))
-
-# test
-async def test(ctx, call, command, args):
-	await client.send_message(ctx.channel, "```py\n{}\n```".format(" ".join(list(map(repr, args)))))
-
-## End commands
-
-"""
-```md
-[MSG SEND/EDIT][50 / 10 s ]
-[MSG SEND/EDIT][ 5 /  5 s  / guild]
-[   MSG DELETE][ 5 /  1 s  / guild]
-[ROLE EDIT/ADD][10 / 10 s  / guild]
-[     NICKNAME][ 1 /  1 s ]
-[         NAME][ 2 /  1 hr]
-[       STATUS][ 5 /  1 mn]
-```
-"""
-
-""" #			#
-	#			#
-	#			#
-		Startup
-	#			#
-	#			#
-	#			#
-"""
-
-functions = {
-	"user": manage_admins,
-	"run": eval_code,
-	"leave": leave_server,
-	"quit": snake_quit,
-	"debug": debug_code,
-	"clear": remove_self_messages,
-	"set": change_setting,
-	"playx": manage_players,
-	"purge": purge_messages,
-	"video": manage_user_videos,
-	"play": play_youtube_video,
-	"speak": play_speech_data,
-	"summon": join_player_voice,
-	"help": get_help,
-	"insult": get_insult,
-	"invite": get_oauth_link,
-	"info": get_object_info,
-	"docs": get_object_docs,
-	"tag": manage_user_tags,
-	"game":change_snake_game,
-	"xkcd":get_xkcd_comic,
-	"uptime": get_uptime,
-	"source": get_source,
-	"playing": get_playing,
-	"list": list_settings,
-	"meme": make_meme,
-	"chat": cross_server_chat,
-	"permissions": get_permissions,
-	"track": manage_user_tracking,
+	elif action == "reload":
+		if bot.extensions.get(cog_name) is None:
+			await bot.say("Cog `{}` is not loaded".format(name))
+			return
+		try:
+			bot.unload_extension(cog_name)
+			bot.load_extension(cog_name)
+		except Exception as e:
+			await bot.say("Failed to reload `{}`: [{}]: {}".format(name, type(e).__name__, e))
+			return
+		await bot.say("Reloaded `{}`".format(name))
 
 
-	"test": test
-}
 
-@client.event
-async def on_ready():
-	print("{0.green}Logged in as {0.cyan}{1.user.name}{2.off}#{0.yellow}{1.user.discriminator}{2.off} [{1.user.id}]".format(Text, client, Attributes))
-	if hasattr(client, "start_time") == False:
-		client.start_time = datetime.utcnow() + utc_offset
-
-	global voice_count, private_count, server_count, channel_count
-	voice_count = 0
-	private_count = len(list(client.private_channels))
-	server_count = len(client.servers)
-	channel_count = 0
-	for channel in client.get_all_channels():
-		if channel.type == discord.ChannelType.text:
-			channel_count += 1
-		elif channel.type == discord.ChannelType.voice:
-			voice_count += 1
-	print("{0.cyan}Connected to {1} voice and {2} text channels ({3} total) on {4} servers and {5} private channels{6.off}".format(Text, voice_count, channel_count, voice_count + channel_count, server_count, private_count, Attributes))
-	update_server_list(client.servers, print_channel)
-	print("\n\n")
-	for channel in client.private_channels:
-		print_private_channel(channel)
-	await client.change_status(game=discord.Game(name="ಠ_ಠ", url="http://twitch.tv/logout", type=1), idle=False)
-
-@client.event
-async def on_server_join(server):
-	print("{0.green}Joined server {0.cyan}{1.name}{0.green}, owned by {0.cyan}{1.owner.name}{2.off}#{0.yellow}{1.owner.discriminator}{2.off}".format(Text, server, Attributes))
-	update_server_list([server], print_channel)
-
-@client.event
-async def on_server_remove(server):
-	print("{0.red}Left server {0.cyan}{1.name}{0.red}, owned by {0.cyan}{1.owner.name}{2.off}#{0.yellow}{1.owner.discriminator}{2.off}".format(Text, server, Attributes))
-
-@client.event
-async def on_channel_created(channel):
-	if channel.is_private == True:
-		print("{0.green}Started a PM with {0.cyan}{1.name}{2.off}#{0.yellow}{1.discriminator}{2.off}".format(Text, channel, Attributes))
-		print_private_channel(channel)
+@manage_cogs.command(name="list", brief="list cogs")
+async def list_cogs(name : str = None):
+	if name is None:
+		await bot.say("Currently loaded cogs:\n{}".format(" ".join('`' + cog_name + '`' for cog_name in bot.extensions)) if len(bot.extensions) > 0 else "No cogs loaded")
 	else:
-		print("{0.green}Joined channel {0.cyan}{1.name}{0.green} in {0.cyan}{1.server.name}{2.off}".format(Text, channel, Attributes))
-		print_channel(channel)
-	
-@client.event
-async def on_channel_delete(channel):
-	print("{0.red}Left channel {0.cyan}{1.name}{0.red} in {0.cyan}{1.server.name}{2.off}".format(Text, channel, Attributes))
+		cog_name = "cogs.command_" + name
+		await bot.say("`{}` {} loaded".format(cog_name, "is not" if bot.extensions.get(cog_name) is None else "is"))
 
-@client.event
-async def on_message(message):
-	if message.author == client.user:
-		return
-	await log_message(message)
-	for user in message.mentions:
-		if is_user_tracked(message.channel, user) == True:
-			await client.send_message(user, "**You've been mentioned**\n{} => #{}\nAt (`{} UTC`) {}#{} said:\n\n{}".format(message.server.name, message.channel.name, message.timestamp.strftime("%a %B %d, %Y, %H:%M:%S"), message.author.name if message.author.nick == None else message.author.nick, message.author.discriminator, message.clean_content))
-			time.sleep(0.21)
+@bot.command(brief="exit")
+@checks.is_owner()
+async def quit():
+	await bot.logout()
 
-	if message.content.lower().startswith("snake"):
-		args = parse_commands(message.content)
-		for user_mention in message.mentions:
-			mention_text = "<@!{}>".format(user_mention.id)
-			if mention_text not in args:
-				mention_text = "<@{}>".format(user_mention.id)
-			if mention_text in args:
-				args[args.index(mention_text)] = user_mention# parse user mentions
-		for channel_mention in message.channel_mentions:
-			mention_text = "<#{}>".format(channel_mention.id)
-			if mention_text in args:
-				args[args.index(mention_text)] = channel_mention# parse channel mentions
-		for role_mention in message.role_mentions:
-			mention_text = "<@&{}>".format(role_mention.id)
-			if mention_text in args:
-				args[args.index(mention_text)] = role_mention# parse role mentions
+bot.run(bot.credentials.get("token"))
 
-		call = args[0]
-		command = args[1] if len(args) > 1 else None
-		command_args = [] if len(args) < 3 else args[2:]
-		if not command == None:
-			if str(command).lower() in functions:
-				await functions[str(command).lower()](message, call, str(command), command_args)
-			elif Settings.get("enable_ai") == True:
-				response = await talk_pandora(message.author, " ".join(args[1:]))
-				if not response == None:
-					await client.send_message(message.channel, response)
+'''
+           ╔ ╗
+         ╔ ╔ ╗ ╗
+       ╔ ╔ ╔ ╗ ╗ ╗
+     ╔ ┌─┬─┐ ┌─┬─┐ ╗
+    ║──┤ │ ├─┤ │ ├─ ║
+    ╠══│ ├─┼─┼─┤ │══╣
+    ║──┤ │ ├─┤ │ ├──║
+    ╠══│ ├─┼─┼─┤ │══╣
+   ╔╣_______________╠╗
+   ║║▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄║║
+   ║║/|\|/|\|/|\|/|\║║
+   ║║¯¯¯¯¯¯¯¯¯¯¯¯¯¯¯║║
+  'WW'             'WW'
 
-token_file = open("token.txt", 'r')
-token = str(token_file.read())
-token_file.close()
-
-client.run(token,bot=False)
-temp_db.close()
-log_db.close()
+'''
