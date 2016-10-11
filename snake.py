@@ -110,7 +110,8 @@ class SnakeBot(commands.Bot):
 		})
 
 		carbon_data = json.dumps({
-			"servercount": len(self.servers)
+			"servercount": len(self.servers),
+			"key": self.credentials.get("carbon_key")
 		})
 
 		with aiohttp.ClientSession() as session:
@@ -120,10 +121,10 @@ class SnakeBot(commands.Bot):
 					if "error" not in js:
 						results[0] = True
 
-			async with session.post("https://www.carbonitex.net/discord/data/botdata.php?key={}".format(self.credentials.get("carbon_key")), data=carbon_data) as response:
+			async with session.post("https://www.carbonitex.net/discord/data/botdata.php", data=carbon_data) as response:
 				if str(response.status)[0] == '2':
 					text = await response.text()
-					if text != "0 - no key?|":
+					if text == "1 - Success":
 						results[1] = True
 		return results
 
