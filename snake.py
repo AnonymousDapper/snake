@@ -109,10 +109,10 @@ class SnakeBot(commands.Bot):
 			"server_count": len(self.servers)
 		})
 
-		carbon_data = json.dumps({
+		carbon_data = {
 			"servercount": len(self.servers),
 			"key": self.credentials.get("carbon_key")
-		})
+		}
 
 		with aiohttp.ClientSession() as session:
 			async with session.post("https://bots.discord.pw/api/bots/{0.user.id}/stats".format(self), headers=bots_headers, data=bots_data) as response:
