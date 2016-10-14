@@ -1,6 +1,10 @@
 cache/
 snake_legacy.py
 credentials.json
+blacklist.json
+config.json
+tags.json
+whitelist.json
 snake.log
 info/
 cogs/__pycache__/
