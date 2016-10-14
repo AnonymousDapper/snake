@@ -181,6 +181,7 @@ class SnakeBot(commands.Bot):
 				return
 
 			if "(╯°□°）╯︵ ┻━┻" in message.clean_content and message.server.id in self.whitelist.get("unflip") and message.channel.id not in self.blacklist.get("unflip_channels"):
+				await self.send_message(message.channel, "┬─────────────────┬ ノ(:eye:▽:eye:ノ)")
 
 		if message.author.id not in self.blacklist.get("command"):
 			await self.process_commands(message)
@@ -199,7 +200,7 @@ class SnakeBot(commands.Bot):
 		await self.post_log("Left **{0.name}** [{0.id}] (owned by **{0.owner.display_name}**#{0.owner.discriminator} [{0.owner.id}]) ({1} total servers)".format(server, len(self.servers)))
 		await self.update_servers()
 
-bot = SnakeBot(command_prefix="snake ", description="\nHsss! Go to discord.gg/qC4ancm for help!\n", help_attrs=dict(hidden=True), command_not_found="Command '{}' does not exist", command_has_no_subcommands="Command '{0.name}'' does not have any subcommands")
+bot = SnakeBot(command_prefix="snake ", description="\nHsss! Go to discord.gg/qC4ancm for help!\n", help_attrs=dict(hidden=True), command_not_found="Command '{}' does not exist", command_has_no_subcommands="Command '{0.name}' does not have any subcommands")
 
 @bot.group(invoke_without_command=True, name="cog", brief="manage cogs")
 @checks.is_owner()
