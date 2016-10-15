@@ -5,6 +5,7 @@ from datetime import datetime
 from random import choice
 from io import BytesIO
 from discord.ext import commands
+from random import choice
 from .utils import checks, time
 
 suggest_text = '''
