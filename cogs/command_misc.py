@@ -2,6 +2,8 @@ import discord, aiohttp, re
 from bs4 import BeautifulSoup as b_s
 from urllib.parse import quote_plus
 from datetime import datetime
+from random import choice
+from io import BytesIO
 from discord.ext import commands
 from random import choice
 from .utils import checks, time
