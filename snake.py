@@ -44,8 +44,9 @@ discord_logger.setLevel(logging.ERROR)
 
 class SnakeBot(commands.Bot):
 	def __init__(self, *args, **kwargs):
-		super().__init__(*args, **kwargs)
 		self.config = config.Config("config.json")
+		kwargs["command_prefix"] = self.config.get("prefix")
+		super().__init__(*args, **kwargs)
 		self.credentials = config.Config("credentials.json")
 		self.whitelist = config.Config("whitelist.json")
 		self.blacklist = config.Config("blacklist.json")
@@ -200,7 +201,7 @@ class SnakeBot(commands.Bot):
 		await self.post_log("Left **{0.name}** [{0.id}] (owned by **{0.owner.display_name}**#{0.owner.discriminator} [{0.owner.id}]) ({1} total servers)".format(server, len(self.servers)))
 		await self.update_servers()
 
-bot = SnakeBot(command_prefix="snake ", description="\nHsss! Go to discord.gg/qC4ancm for help!\n", help_attrs=dict(hidden=True), command_not_found="Command '{}' does not exist", command_has_no_subcommands="Command '{0.name}' does not have any subcommands")
+bot = SnakeBot(description="\nHsss! Go to discord.gg/qC4ancm for help!\n", help_attrs=dict(hidden=True), command_not_found="Command '{}' does not exist", command_has_no_subcommands="Command '{0.name}' does not have any subcommands")
 
 @bot.group(invoke_without_command=True, name="cog", brief="manage cogs")
 @checks.is_owner()
