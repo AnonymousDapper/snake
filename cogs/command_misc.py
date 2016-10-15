@@ -3,6 +3,7 @@ from bs4 import BeautifulSoup as b_s
 from urllib.parse import quote_plus
 from datetime import datetime
 from discord.ext import commands
+from random import choice
 from .utils import checks, time
 
 suggest_text = '''
