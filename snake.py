@@ -174,7 +174,7 @@ class SnakeBot(commands.Bot):
 			if message.author.bot or message.channel.id in self.blacklist.get("channel_ignore") or message.server.id in self.blacklist.get("server_ignore"):
 				return
 
-			if (message.content.startswith("<@{}>".format(bot.user.id)) or message.content.startswith("<@!{}}>".format(bot.user.id)) and message.author.id not in self.blacklist.get("chat")) or message.channel.id in self.whitelist.get("chat"):
+			if (message.content.startswith("<@{}>".format(bot.user.id)) or message.content.startswith("<@!{}>".format(bot.user.id)) and message.author.id not in self.blacklist.get("chat")) or message.channel.id in self.whitelist.get("chat"):
 				chat_text = " ".join(message.clean_content.split()[1:])
 				response = await self.chat(message.author, chat_text)
 				await self.send_message(message.channel, response)
