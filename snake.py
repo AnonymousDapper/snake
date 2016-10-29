@@ -51,6 +51,7 @@ class SnakeBot(commands.Bot):
 		self.whitelist = config.Config("whitelist.json")
 		self.blacklist = config.Config("blacklist.json")
 		self.tag_list = config.Config("tags.json")
+		self._DEBUG = any("debug" in arg for arg in sys.argv)
 		self.cust_ids = {}
 		self.boot_time = datetime.now()
 		self.commands_used = {}
