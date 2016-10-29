@@ -11,3 +11,4 @@ cogs/__pycache__/
 cogs/__init__.py
 cogs/utils/__pycache__/
 cogs/utils/__init__.py
+cogs/utils/tag_manager/__pycache__/
