@@ -158,18 +158,7 @@ class SnakeBot(commands.Bot):
 		else:
 			print("{}: {}".format(paint(type(error).__name__, "red"), error))
 
-	async def on_command(self, command, ctx):
-		if command.name not in self.commands_used:
-			self.commands_used[command.name] = 0
-		else:
-			self.commands_used[command.name] += 1
-		message = ctx.message
-		destination = None
-		if message.channel.is_private:
-			destination = "Private Message"
-		else:
-			destination = "[{0.server.name} #{0.channel.name}]".format(message)
-		self.log.info("{1}: {0.author.name}: {0.clean_content}".format(message, destination))
+
 
 	async def on_message(self, message):
 		if not message.channel.is_private:

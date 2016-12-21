@@ -68,7 +68,7 @@ class Misc:
         comic_image_url = "http:" + comic["src"]
         async with session.get(comic_image_url) as image:
           image_data = await image.read()
-          image_name = "cache/{}".format(comic_image_url[28:])
+          image_name = "./cache/{}".format(comic_image_url[28:])
           with open(image_name, "wb") as f:
             f.write(image_data)
           await self.bot.upload(image_name, filename=comic_image_url[28:], content="**{}** (<{}>):\n{}".format(comic_title, link_group, comic_text))
