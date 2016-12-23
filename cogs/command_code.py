@@ -23,7 +23,7 @@ class Debug:
 
   @commands.command(name='debug', pass_context=True, brief="eval")
   @checks.is_owner()
-  async def debug_statement(self, ctx, *, content : str):
+  async def debug_statement(self, ctx, *, content:str):
     result = None
     code = self.clean(content)
     vals = globals()
@@ -56,14 +56,28 @@ class Debug:
 
   @commands.command(name='sys', brief="sys terminal")
   @checks.is_owner()
-  async def terminal_command(self, *, command : str):
+  async def terminal_command(self, *, command:str):
     result = await self.bot.loop.run_in_executor(None, functools.partial(subprocess.run, command, stdout=subprocess.PIPE, shell=True, universal_newlines=True))
     result = result.stdout
     await self.bot.say("```\n{}\n```".format(result[:1800] + "..." if len(result) > 1800 else result))
 
+  @commands.command(name="psql", brief="execute sql")
+  @checks.is_owner()
+  async def run_sql(self, *, sql:str):
+    sql_connection = self.bot.db.engine.connect()
+    sql_command = self.clean(sql)
+    try:
+      result = await self.bot.loop.run_in_executor(None, functools.partial(sql_connection.execute, sql_command))
+      clr = lambda arr: ", ".join(repr(item) for item in arr)
+      result = ("\n".join(clr(arg) for arg in result))[:1900]
+      print(result)
+      await self.bot.say("```py\n{}\n```".format(result))
+    except Exception as e:
+      await self.bot.say("```diff\n- {}: {}\n```".format(type(e).__name__, e))
+
   @commands.command(name='run', pass_context=True, brief="exec")
   @checks.is_owner()
-  async def run_code(self, ctx, *, content : str):
+  async def run_code(self, ctx, *, content:str):
     code = self.clean(content)
     code = "async def coro():\n  " + "\n  ".join(code.split("\n"))
     vals = globals()

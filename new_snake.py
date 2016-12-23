@@ -49,6 +49,51 @@ async def quit_command():
     await bot.shard_send(payload)
     #await bot._exit()
 
+async def manage_cogs(name : str, action : str):
+    cog_name = "cogs.command_" + name
+    print(cog_name, bot.extensions.get(cog_name), action)
+    action = action.lower()
+    if action == "load":
+        if bot.extensions.get(cog_name) is not None:
+            await bot.say("Cog `{}` is already loaded".format(name))
+            return
+        try:
+            bot.load_extension(cog_name)
+        except Exception as e:
+            await bot.say("Failed to load `{}`: [{}]: {}".format(name, type(e).__name__, e))
+            return
+        await bot.say("Loaded `{}`".format(name))
+
+    elif action == "unload":
+        if bot.extensions.get(cog_name) is None:
+            await bot.say("Cog `{}` is not loaded".format(name))
+            return
+        try:
+            bot.unload_extension(cog_name)
+        except Exception as e:
+            await bot.say("Failed to unload `{}`: [{}]: {}".format(name, type(e).__name__, e))
+            return
+        await bot.say("Unloaded `{}`".format(name))
+
+    elif action == "reload":
+        if bot.extensions.get(cog_name) is None:
+            await bot.say("Cog `{}` is not loaded".format(name))
+            return
+        try:
+            bot.unload_extension(cog_name)
+            bot.load_extension(cog_name)
+        except Exception as e:
+            await bot.say("Failed to reload `{}`: [{}]: {}".format(name, type(e).__name__, e))
+            return
+        await bot.say("Reloaded `{}`".format(name))
+
+async def list_cogs(name : str = None):
+    if name is None:
+        await bot.say("Currently loaded cogs:\n{}".format(" ".join('`' + cog_name + '`' for cog_name in bot.extensions)) if len(bot.extensions) > 0 else "No cogs loaded")
+    else:
+        cog_name = "cogs.command_" + name
+        await bot.say("`{}` {} loaded".format(cog_name, "is not" if bot.extensions.get(cog_name) is None else "is"))
+
 # SnakeBot class
 
 class SnakeBot(commands.Bot):
@@ -273,6 +318,9 @@ class SnakeBot(commands.Bot):
         self.loop.create_task(self.start(self.credentials.get("token")))
 
         self.add_command(commands.Command(name="quit", callback=quit_command, brief="exit", checks=[checks.is_owner()]))
+        local_group = commands.Group(name="cog", callback=manage_cogs, brief="manage cogs", checks=[checks.is_owner()], invoke_without_command=True)
+        local_group.add_command(commands.Command(name="list", callback=list_cogs, brief="list cogs", checks=[checks.is_owner()]))
+        self.add_command(local_group)
 
         for filename in os.listdir("./cogs"):
             if os.path.isfile("cogs/" + filename) and filename.startswith("command_"):
@@ -331,18 +379,19 @@ class SnakeBot(commands.Bot):
         self.log.info("{1}: {0.author.name}: {0.clean_content}".format(message, destination))
 
     async def on_message(self, message):
+
+        channel = message.channel
         author = message.author
-        with self.session_scope() as session:
-            sql_author = session.query(sql.User).filter_by(id=int(author.id)).first()
-            print(sql_author)
-            if sql_author is None:
-                sql_author = sql.User(id=int(author.id), name=author.name, nick=author.nick, bot=author.bot, discrim=author.discriminator)
+        if (not channel.is_private) and isinstance(author, discord.Member):
+            with self.session_scope() as session:
+                sql_author = session.query(sql.User).filter_by(id=int(author.id)).first()
+                if sql_author is None:
+                    sql_author = sql.User(id=int(author.id), name=author.name, nick=author.nick, bot=author.bot, discrim=author.discriminator)
 
-            new_message = sql.Message(id=int(message.id), timestamp=message.timestamp.strftime(self.config.get("msg_strftime")), author_id=int(author.id), author=sql_author, channel_id=int(message.channel.id), server_id=int(message.server.id), content=message.content, edited=False, deleted=False)
-            print("added new message {0!r}".format(new_message))
+                new_message = sql.Message(id=int(message.id), timestamp=message.timestamp.strftime(self.config.get("msg_strftime")), author_id=int(author.id), author=sql_author, channel_id=int(channel.id), server_id=int(message.server.id), content=message.content, edited=False, deleted=False)
 
-            session.add(sql_author)
-            session.add(new_message)
+                session.add(sql_author)
+                session.add(new_message)
 
         await self.process_commands(message)
 
