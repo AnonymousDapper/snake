@@ -64,16 +64,27 @@ class Debug:
   @commands.command(name="psql", brief="execute sql")
   @checks.is_owner()
   async def run_sql(self, *, sql:str):
-    sql_connection = self.bot.db.engine.connect()
+    #sql_connection = self.bot.db.engine.connect()
     sql_command = self.clean(sql)
+    results = None
     try:
-      result = await self.bot.loop.run_in_executor(None, functools.partial(sql_connection.execute, sql_command))
-      clr = lambda arr: ", ".join(repr(item) for item in arr)
-      result = ("\n".join(clr(arg) for arg in result))[:1900]
-      print(result)
-      await self.bot.say("```py\n{}\n```".format(result))
+      cmd = functools.partial(self.bot.db.engine.execute, sql_command)
+      results = await self.bot.loop.run_in_executor(None, cmd)
+      print("passed")
+
     except Exception as e:
       await self.bot.say("```diff\n- {}: {}\n```".format(type(e).__name__, e))
+      return
+    if not results.returns_rows:
+      result = "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command)
+
+    else:
+      result_list = results.fetchall()
+      clr = lambda arr: ", ".join(repr(item) for item in arr)
+      result = ("```py\n--> {} rows <--\n{}\n```".format(len(result_list), "\n".join(clr(arg) for arg in result_list)))[:1950]
+
+    print(result)
+    await self.bot.say(result)
 
   @commands.command(name='run', pass_context=True, brief="exec")
   @checks.is_owner()

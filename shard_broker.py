@@ -23,6 +23,7 @@ class ShardBroker:
         self.shard_limit = shard_limit
         self._DEBUG = any("debug" in arg for arg in sys.argv)
         self.server = None
+        self.platform = sys.platform
 
         # self.log = logging.getLogger()
         # self.log.setLevel(logging.INFO)
@@ -31,7 +32,7 @@ class ShardBroker:
         # )
 
         for shard_id in range(0, self.shard_limit):
-            args = ["python", "new_snake.py", str(shard_id)]
+            args = ["python" if self.platform == "win32" else "python3.5", "new_snake.py", str(shard_id)]
 
             if self._DEBUG:
                 args.append("debug")
