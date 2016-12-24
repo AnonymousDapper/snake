@@ -1,4 +1,4 @@
-import asyncio, contextlib, io, inspect, sys, functools, subprocess, discord
+import asyncio, contextlib, io, inspect, sys, functools, subprocess, discord, sqlalchemy
 from discord.ext import commands
 from .utils import checks
 
@@ -61,9 +61,9 @@ class Debug:
     result = result.stdout
     await self.bot.say("```\n{}\n```".format(result[:1800] + "..." if len(result) > 1800 else result))
 
-  @commands.command(name="psql", brief="execute sql")
+  @commands.command(name="psql", brief="execute sql", pass_context=True)
   @checks.is_owner()
-  async def run_sql(self, *, sql:str):
+  async def run_sql(self, ctx, *, sql:str):
     #sql_connection = self.bot.db.engine.connect()
     sql_command = self.clean(sql)
     results = None
@@ -72,11 +72,17 @@ class Debug:
       results = await self.bot.loop.run_in_executor(None, cmd)
       print("passed")
 
-    except Exception as e:
-      await self.bot.say("```diff\n- {}: {}\n```".format(type(e).__name__, e))
+    except sqlalchemy.exc.ProgrammingError:
+      await self.bot.send_message(ctx.message.channel, "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command))
       return
+
+    except Exception as e:
+      await self.bot.send_message(ctx.message.channel, "```diff\n- {}: {}\n```".format(type(e).__name__, e))
+      return
+
     if not results.returns_rows:
-      result = "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command)
+      #result = "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command)
+      result = "Query returned 0 rows"
 
     else:
       result_list = results.fetchall()
@@ -84,7 +90,7 @@ class Debug:
       result = ("```py\n--> {} rows <--\n{}\n```".format(len(result_list), "\n".join(clr(arg) for arg in result_list)))[:1950]
 
     print(result)
-    await self.bot.say(result)
+    await self.bot.send_message(ctx.message.channel, result)
 
   @commands.command(name='run', pass_context=True, brief="exec")
   @checks.is_owner()
