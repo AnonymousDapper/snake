@@ -70,7 +70,6 @@ class Debug:
     try:
       cmd = functools.partial(self.bot.db.engine.execute, sql_command)
       results = await self.bot.loop.run_in_executor(None, cmd)
-      print("passed")
 
     except sqlalchemy.exc.ProgrammingError:
       await self.bot.send_message(ctx.message.channel, "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command))
@@ -85,11 +84,15 @@ class Debug:
       result = "Query returned 0 rows"
 
     else:
+      row_names = results.keys()
       result_list = results.fetchall()
       clr = lambda arr: ", ".join(repr(item) for item in arr)
-      result = ("```py\n--> {} rows <--\n{}\n```".format(len(result_list), "\n".join(clr(arg) for arg in result_list)))[:1950]
+      result = ("```py\n{1}\n--> {0} rows <--\n{2}\n```".format(
+        len(result_list),
+        ", ".join(row_names),
+        "\n".join(clr(arg) for arg in result_list))[:1900]
+      )
 
-    print(result)
     await self.bot.send_message(ctx.message.channel, result)
 
   @commands.command(name='run', pass_context=True, brief="exec")

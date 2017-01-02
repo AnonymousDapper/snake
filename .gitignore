@@ -5,7 +5,8 @@ blacklist.json
 config.json
 tags.json
 whitelist.json
-snake.log
+*.log
+*.txt
 info/
 cogs/__pycache__/
 cogs/__init__.py

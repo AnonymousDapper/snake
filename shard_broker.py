@@ -38,6 +38,8 @@ class ShardBroker:
                 args.append("debug")
 
             shard_process = psutil.Popen(args, stdout=sys.stdout)
+            self.shard_processes[shard_id] = shard_process
+
             print("Started shard {}/{} pid {} [{}]".format(shard_id, self.shard_limit - 1, shard_process.pid, shard_process.cmdline()))
 
         print("Broker created!")
@@ -51,8 +53,8 @@ class ShardBroker:
     def _log_shard(self, event_name, ws, op, unknown=False):
         if unknown:
             print("Unknown op {} from shard #{}".format(op, ws.shard_id))
-        else:
-            print("{} from shard #{}".format(self._color(event_name, op), ws.shard_id))
+        #else:
+            #print("{} from shard #{}".format(self._color(event_name, op), ws.shard_id))
 
     async def _run_event(self, event, ws, *args, **kwargs):
         try:
@@ -78,6 +80,27 @@ class ShardBroker:
     async def on_error(self, event_method, ws, *args, **kwargs):
         print("Ignoring exception in {} [shard #{}]".format(event_method, ws.shard_id), file=sys.stderr)
         traceback.print_exc()
+
+    def restart_shard(self, ws):
+        shard_id = ws.shard_id
+        try:
+            asyncio.ensure_future(ws.close(code=1004, reason="closing"))
+            if self.shard_processes[ws.shard_id].is_running():
+                self.shard_processes[ws.shard_id].kill() # Kill the shard process
+
+            del self.shards[ws.shard_id]
+        except:
+            pass
+
+        args = ["python" if self.platform == "win32" else "python3.5", "new_snake.py", str(shard_id)]
+
+        if self._DEBUG:
+            args.append("debug")
+
+        shard_process = psutil.Popen(args, stdout=sys.stdout)
+        self.shard_processes[shard_id] = shard_process
+
+        print("Restarted shard {}/{} pid {} [{}]".format(shard_id, self.shard_limit - 1, shard_process.pid, shard_process.cmdline()))
 
     def close_shard(self, ws):
         try:
@@ -112,8 +135,8 @@ class ShardBroker:
         try:
             await ws.send(data)
         except websockets.exceptions.ConnectionClosed:
-            print("Shard #{} closed, removing.".format(ws.shard_id))
-            self.close_shard(ws)
+            print("Shard #{} closed, restarting.".format(ws.shard_id))
+            self.restart_shard(ws)
 
     def _decode(self, raw_data):
         data = None
@@ -136,10 +159,21 @@ class ShardBroker:
                 payload = {"op": self.PING}
                 try:
                     await self.send(payload, ws)
+                    status = self.shard_processes[shard_id].is_running()
+                    if not status:
+                        raise TypeError("it ded jimes")
+
                     ws.temp_ping = datetime.now()
                 except websockets.exceptions.ConnectionClosed:
-                    print("Shard #{} closed, removing.".format(ws.shard_id))
-                    self.close_shard(ws)
+                    print("Shard #{} closed, restarting.".format(ws.shard_id))
+                    self.restart_shard(ws)
+                except psutil.NoSuchProcess:
+                    print("Shard #{} closed, restarting.".format(ws.shard_id))
+                    self.restart_shard(ws)
+                except TypeError:
+                    print("Shard #{} closed, restarting.".format(ws.shard_id))
+                    self.restart_shard(ws)
+
             await asyncio.sleep(10)
 
     async def poll_event(self, ws):
@@ -147,8 +181,8 @@ class ShardBroker:
             data = await ws.recv()
             await self.process_message(ws, data)
         except websockets.exceptions.ConnectionClosed:
-            print("Shard #{} closed, removing.".format(ws.shard_id))
-            self.close_shard(ws)
+            print("Shard #{} closed, restarting.".format(ws.shard_id))
+            self.restart_shard(ws)
 
     async def process_message(self, ws, message):
         self.dispatch("raw_data", ws, message)
@@ -190,7 +224,7 @@ class ShardBroker:
             if hasattr(ws, "temp_ping"):
                 ws.temp_pong = datetime.strptime(data.get("reply"), "%H-%M-%S:%f")
                 ws.ping = self._get_ping(ws.temp_pong, datetime.now())
-                print("Shard #{} responded from ping with response time of {}ms".format(ws.shard_id, ws.ping))
+                #print("Shard #{} responded from ping with response time of {}ms".format(ws.shard_id, ws.ping))
                 del ws.temp_pong
                 del ws.temp_ping
 
@@ -281,7 +315,7 @@ class ShardBroker:
                 await self.poll_event(ws)
             except websockets.exceptions.ConnectionClosed as e:
                 print("Shard #{} closed [{}]".format(ws.shard_id, e.reason))
-                self.close_shard(ws)
+                self.restart_shard(ws)
 
     async def on_data(self, ws, *args, **kwargs):
         print(args, kwargs)

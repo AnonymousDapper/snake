@@ -25,14 +25,16 @@ SOFTWARE.
 """
 
 # Imports
-import discord, asyncio, os, logging, sys, traceback, aiohttp, json, sqlalchemy, websockets
+import discord, asyncio, os, logging, sys, traceback, aiohttp, json, websockets, functools
+
 from contextlib import contextmanager
 from random import choice as rand_choice
 from bs4 import BeautifulSoup as b_soup
+
 from discord.ext import commands
 from datetime import datetime
-import sqlalchemy
-from cogs.utils import config, time, checks
+
+from cogs.utils import time, checks
 from cogs.utils import sql
 from cogs.utils.colors import paint, back, attr
 
@@ -109,7 +111,7 @@ class SnakeBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         self.config = self._read_config("config.json")
         self._DEBUG = any("debug" in arg for arg in sys.argv)
-        self.credentials = config.Config("credentials.json")
+        self.credentials = self._read_config("credentials.json")
 
         self.loop = asyncio.get_event_loop()
         self.shard_ws = None
@@ -123,7 +125,7 @@ class SnakeBot(commands.Bot):
 
 
         self.log = logging.getLogger()
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.DEBUG)
         self.log.addHandler(
             logging.FileHandler(filename="snake_shard{}.log".format(self.shard_id), encoding="utf-8", mode='w')
         )
@@ -139,6 +141,23 @@ class SnakeBot(commands.Bot):
             session.rollback()
         finally:
             session.close()
+
+    def log_message(self, message, action):
+        author = message.author
+        channel = message.channel
+        server = channel.server
+
+        #print("SEARCHING FOR AUTHOR {0!r} {0!s} {0}".format(author))
+        with self.session_scope() as session:
+            sql_author = session.query(sql.User).filter_by(id=int(author.id)).first()
+            #print("SQL AUTHOR {0!r} {0!s} {0}".format(sql_author))
+            if sql_author is None:
+                sql_author = sql.User(id=int(author.id), name=author.name, nick=author.nick, bot=author.bot, discrim=author.discriminator)
+                session.add(sql_author)
+
+            new_message = sql.Message(id=int(message.id), timestamp=message.timestamp.strftime(self.config.get("msg_strftime")), author_id=int(author.id), author=sql_author, channel_id=int(channel.id), server_id=int(server.id), content=message.content, action=action)
+
+            session.add(new_message)
 
     def get_prefix(self, bot, message):
         return "snake "
@@ -156,8 +175,8 @@ class SnakeBot(commands.Bot):
     def _log_shard(self, event_name, op, unknown=False):
         if unknown:
             print("Unknown op {} on shard #{}".format(op, self.shard_id))
-        else:
-            print("{} on shard #{}".format(self._color(event_name, op), self.shard_id))
+        #else:
+            #print("{} on shard #{}".format(self._color(event_name, op), self.shard_id))
 
     async def _run_shard_event(self, event, *args, **kwargs):
         try:
@@ -379,21 +398,24 @@ class SnakeBot(commands.Bot):
         self.log.info("{1}: {0.author.name}: {0.clean_content}".format(message, destination))
 
     async def on_message(self, message):
-
         channel = message.channel
         author = message.author
         if (not channel.is_private) and isinstance(author, discord.Member):
-            with self.session_scope() as session:
-                sql_author = session.query(sql.User).filter_by(id=int(author.id)).first()
-                if sql_author is None:
-                    sql_author = sql.User(id=int(author.id), name=author.name, nick=author.nick, bot=author.bot, discrim=author.discriminator)
-
-                new_message = sql.Message(id=int(message.id), timestamp=message.timestamp.strftime(self.config.get("msg_strftime")), author_id=int(author.id), author=sql_author, channel_id=int(channel.id), server_id=int(message.server.id), content=message.content, edited=False, deleted=False)
-
-                session.add(sql_author)
-                session.add(new_message)
-
+            await self.loop.run_in_executor(None, functools.partial(self.log_message, message, "create"))
         await self.process_commands(message)
+
+    async def on_message_delete(self, message):
+        channel = message.channel
+        author = message.author
+        if channel.is_private is False and isinstance(author, discord.Member):
+            await self.loop.run_in_executor(None, functools.partial(self.log_message, message, "delete"))
+
+    # async def on_message_edit(self, msg_1, message):
+    #     channel = message.channel
+    #     author = message.author
+    #     if channel.is_private is False and isinstance(author, discord.Member):
+    #         await self.loop.run_in_executor(None, functools.partial(self.log_message, message, "edit"))
+
 
 # more class functions here
 

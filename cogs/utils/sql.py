@@ -76,20 +76,18 @@ class Message(Base):
 
     __tablename__ = "chat_logs"
 
-    id = Column(BigInteger, primary_key=True)
+    pk = Column(Integer, primary_key=True)
+    id = Column(BigInteger)
     timestamp = Column(String)
     author_id = Column(BigInteger, ForeignKey("users.id"))
     author = relationship("User", back_populates="messages")
     channel_id = Column(BigInteger)
     server_id = Column(BigInteger)
-    edit_timestamp = Column(String)
     content = Column(String(2000))
-    edit_content = Column(String(2000))
-    edited = Column(Boolean)
-    deleted = Column(Boolean)
+    action = Column(String(15))
 
     def __repr__(self):
-        return "<Message(id={0.id}, timestamp='{0.timestamp}', author_id={0.author_id}, channel_id={0.channel_id}, server_id={0.server_id}, edit_timestamp='{0.edit_timestamp}', edited={0.edited}, deleted={0.deleted})>".format(self)
+        return "<Message(id={0.id}, timestamp='{0.timestamp}', author_id={0.author_id}, channel_id={0.channel_id}, server_id={0.server_id}, action='{0.action}')>".format(self)
 
 class CommandStat(Base):
 
