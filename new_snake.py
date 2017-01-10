@@ -336,7 +336,8 @@ class SnakeBot(commands.Bot):
 
         self.loop.create_task(self.start(self.credentials.get("token")))
 
-        self.add_command(commands.Command(name="quit", callback=quit_command, brief="exit", checks=[checks.is_owner()]))
+        self.add_command(commands.Command(name="quit", callback=quit_command, brief="exit", checks=[checks.is_owner()], hidden=True))
+
         local_group = commands.Group(name="cog", callback=manage_cogs, brief="manage cogs", checks=[checks.is_owner()], invoke_without_command=True)
         local_group.add_command(commands.Command(name="list", callback=list_cogs, brief="list cogs", checks=[checks.is_owner()]))
         self.add_command(local_group)
