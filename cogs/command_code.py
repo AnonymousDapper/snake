@@ -1,134 +1,79 @@
-import asyncio, contextlib, io, inspect, sys, functools, subprocess, discord, sqlalchemy
+import subprocess, sqlalchemy
+
+from functools import partial
 from discord.ext import commands
+
 from .utils import checks
 
-@contextlib.contextmanager
-def stdoutIO(stdout=None):
-  old = sys.stdout
-  if stdout == None:
-    stdout = io.StringIO()
-  sys.stdout = stdout
-  yield stdout
-  sys.stdout = old
-
 class Debug:
-  def __init__(self, bot):
-    self.bot = bot
+    def __init__(self, bot):
+        self.bot = bot
+        self.newline = "\n"
 
-  def clean(self, code):
-    if code.startswith("```") and code.endswith("```"):
-      return "\n".join(code.split("\n")[1:-1])
+    def clean(self, code):
+        if code.startswith("```") and code.endswith("```"):
+            return "\n".join(code.split("\n")[1:-1])
+        return code.strip("` \n")
 
-    return code.strip("` \n")
+    @commands.command(name="debug", pass_context=True, brief="eval")
+    @checks.is_owner()
+    async def debug_statement(self, ctx, *, content:str):
+        code = self.clean(content)
+        results = await self.shared.global_eval(code, ctx)
+        code_result = "\m".join(f"Shard #{shard_id}\n{result}\n" for shard_id, result in results.items())
+        await self.bot.say(code_result)
 
-  @commands.command(name='debug', pass_context=True, brief="eval")
-  @checks.is_owner()
-  async def debug_statement(self, ctx, *, content:str):
-    result = None
-    code = self.clean(content)
-    vals = globals()
-    vals.update(dict(
-      self=self,
-      bot=self.bot,
-      message=ctx.message,
-      ctx=ctx,
-      server=ctx.message.server,
-      channel=ctx.message.channel,
-      author=ctx.message.author,
-      code=code,
-      io=io,
-      sys=sys,
-      commands=commands,
-      discord=discord
-    ))
-    try:
-      precompiled = compile(code, "eval.py", "eval")
-      vals["compiled"] = precompiled
-      result = eval(precompiled, vals)
-    except Exception as e:
-      await self.bot.say("```diff\n- {}: {}\n```".format(type(e).__name__, e))
-      return
-    if inspect.isawaitable(result):
-      result = await result
-    if not result is None:
-      result = str(result)
-      await self.bot.say("```py\n{}\n```".format(result[:1800] + "..." if len(result) > 1800 else result))
+    @commands.command(name="run", pass_context=True, brief="exec")
+    @checks.is_owner()
+    async def run_statement(self, ctx, *, content:str):
+        code = self.clean(content)
+        results = await self.shared.global_exec(code, ctx)
+        code_result = "\m".join(f"Shard #{shard_id}\n{result}\n" for shard_id, result in results.items())
+        await self.bot.say(code_result)
 
-  @commands.command(name='sys', brief="sys terminal")
-  @checks.is_owner()
-  async def terminal_command(self, *, command:str):
-    result = await self.bot.loop.run_in_executor(None, functools.partial(subprocess.run, command, stdout=subprocess.PIPE, shell=True, universal_newlines=True))
-    result = result.stdout
-    await self.bot.say("```\n{}\n```".format(result[:1800] + "..." if len(result) > 1800 else result))
+    @commands.command(name="psql", pass_context=True, brief="execute sql")
+    @checks.is_owner()
+    async def run_sql(self, ctx, *, sql:str):
+        sql_command = self.clean(sql)
+        try:
+            results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql_command))
 
-  @commands.command(name="psql", brief="execute sql", pass_context=True)
-  @checks.is_owner()
-  async def run_sql(self, ctx, *, sql:str):
-    #sql_connection = self.bot.db.engine.connect()
-    sql_command = self.clean(sql)
-    results = None
-    try:
-      cmd = functools.partial(self.bot.db.engine.execute, sql_command)
-      results = await self.bot.loop.run_in_executor(None, cmd)
+        except sqlalchemy.exc.ProgrammingError:
+            await self.bot.say(f"Unable to process statement. Double check your query:\n```sql\m{sql_command}\n```")
+            return
 
-    except sqlalchemy.exc.ProgrammingError:
-      await self.bot.send_message(ctx.message.channel, "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command))
-      return
+        except Exception as e:
+            await self.bot.say(f"```diff\n- {type(e).__name__}: {e}")
+            return
 
-    except Exception as e:
-      await self.bot.send_message(ctx.message.channel, "```diff\n- {}: {}\n```".format(type(e).__name__, e))
-      return
+        if not results.returns_rows:
+            result = "Query returned 0 rows"
 
-    if not results.returns_rows:
-      #result = "Unable to process statement. Double check your query:\n```sql\n{}\n```".format(sql_command)
-      result = "Query returned 0 rows"
+        else:
+            result_list = results.fetchall()
+            clr = lambda arr: ", ".join(repr(item) for item in arr)
+            result = f"```py{n}{', '.join(row_names)}\n--> {len(result_list)} rows <--\n{self.newline.join(clr(arg) for arg in result_list)}\n```"
+            if len(result) > 1900:
+                await self.bot.say(f"Output too long. View results at {self.upload_to_gist(result, 'exec.py')}")
+            else:
+                await self.bot.say(f"```py\n{result}\n```")
 
-    else:
-      row_names = results.keys()
-      result_list = results.fetchall()
-      clr = lambda arr: ", ".join(repr(item) for item in arr)
-      result = ("```py\n{1}\n--> {0} rows <--\n{2}\n```".format(
-        len(result_list),
-        ", ".join(row_names),
-        "\n".join(clr(arg) for arg in result_list))[:1900]
-      )
+    @commands.command(name="sys", pass_context=True, brief="system terminal")
+    @checks.is_owner()
+    async def system_terminal(self, ctx, *, command:str):
+        result = await self.bot.loop.run_in_executor(None, partial(
+            subprocess.run,
+            command,
+            stdout=subprocess.PIPE,
+            shell=True,
+            universal_newlines=True
+        ))
+        result = result.stdout
 
-    await self.bot.send_message(ctx.message.channel, result)
-
-  @commands.command(name='run', pass_context=True, brief="exec")
-  @checks.is_owner()
-  async def run_code(self, ctx, *, content:str):
-    code = self.clean(content)
-    code = "async def coro():\n  " + "\n  ".join(code.split("\n"))
-    vals = globals()
-    vals.update(dict(
-      self=self,
-      bot=self.bot,
-      message=ctx.message,
-      ctx=ctx,
-      server=ctx.message.server,
-      channel=ctx.message.channel,
-      author=ctx.message.author,
-      io=io,
-      code=code,
-      sys=sys,
-      commands=commands,
-      discord=discord
-    ))
-    with stdoutIO() as s:
-      try:
-        precompiled = compile(code, "exec.py", "exec")
-        vals["compiled"] = precompiled
-        result = exec(precompiled, vals)
-        await vals["coro"]()
-      except Exception as e:
-        await self.bot.say("```diff\n- {}: {}\n```".format(type(e).__name__, e))
-        return
-    result = str(s.getvalue())
-    if not result == "":
-      await self.bot.say("```py\n{}\n```".format(result[:1800] + "..." if len(result) > 1800 else result))
-
-
+        if len(result) > 1900:
+            await self.bot.say(f"Output too long. View results at {self.upload_to_gist(result, 'exec.py')}")
+        else:
+            await self.bot.say(f"```py\n{result}\n```")
 
 def setup(bot):
-  bot.add_cog(Debug(bot))
+    bot.add_cog(Debug(bot))
