@@ -82,6 +82,7 @@ class ShareManager:
 
     def set_shard_count(self, shard_count):
         self.shard_count = shard_count
+        self.kwargs["shard_count"] = shard_count
 
     def _read_config(self, filename):
         with open(filename, 'r', encoding="utf-8") as cfg:
