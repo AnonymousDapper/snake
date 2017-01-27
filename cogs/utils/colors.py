@@ -59,15 +59,15 @@ class _Attributes:
 
 def paint(text, color):
   if hasattr(_Text, color):
-    return "{}{}{}".format(getattr(_Text, color), text, _Attributes.off)
-  raise ValueError("invalid color name: {}".format(color))
+    return f"{getattr(_Text, color)}{text}{_Attributes.off}"
+  raise ValueError("invalid color name: {color}")
 
 def back(text, color):
   if hasattr(_Background, color):
-    return "{}{}{}".format(getattr(_Background, color), text, _Attributes.off)
-  raise ValueError("invalid background color name: {}".format(color))
+    return f"{getattr(_Background, color)}{text}{_Attributes.off}"
+  raise ValueError("invalid color name: {color}")
 
 def attr(text, attribute):
   if hasattr(_Attributes, attribute):
-    return "{}{}{}".format(getattr(_Attributes, attribute), text, _Attributes.off)
-  raise ValueError("invalid attribute name: {}".format(attribute))
+    return f"{getattr(_Attributes, color)}{text}{_Attributes.off}"
+  raise ValueError("invalid attribute name: {attribute}")

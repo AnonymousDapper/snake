@@ -1,4 +1,5 @@
 from sqlalchemy import ForeignKey, Integer, BigInteger, String, Date, Boolean, Column, create_engine
+
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -18,7 +19,7 @@ class Tag(Base):
     timestamp = Column(String)
 
     def __repr__(self):
-        return "<Tag(name='{0.name}', author_id={0.author_id}, uses={0.uses}, timestamp='{0.timestamp}')>".format(self)
+        return f"<Tag(name='{self.name}', author_id={self.author_id}, uses={self.uses}, timestamp='{self.timestamp}')>"
 
 class Permission(Base):
 
@@ -27,12 +28,13 @@ class Permission(Base):
     pk = Column(Integer, primary_key=True)
     server_id = Column(BigInteger)
     channel_id = Column(BigInteger)
+    role_id = Column(BigInteger)
     user = relationship("User", back_populates="permissions")
     user_id = Column(BigInteger, ForeignKey("users.id"))
-    p_string = Column(String)
+    bits = Column(BigInteger)
 
     def __repr__(self):
-        return "<Permission(server_id={0.server_id}, channel_id={0.channel_id}, user_id={0.user_id})>".format(self)
+        return f"<Permission(server_id={self.server_id}, channel_id={self.channel_id}, user_id={self.user_id}, bits={self.bits})>"
 
 class User(Base):
 
@@ -40,7 +42,6 @@ class User(Base):
 
     id = Column(BigInteger, primary_key=True)
     name = Column(String(40))
-    nick = Column(String(40))
     bot = Column(Boolean)
     discrim = Column(String(4))
     permissions = relationship("Permission", back_populates="user", cascade="all, delete, delete-orphan")
@@ -48,7 +49,7 @@ class User(Base):
     tags = relationship("Tag", back_populates="author", cascade="all, delete, delete-orphan")
 
     def __repr__(self):
-        return "<User(id={0.id}, name='{0.name}', nick='{0.nick}', bot={0.bot}, discrim='{0.discrim}', permissions={0.permissions}, messages={0.messages}, tags={0.tags})>".format(self)
+        return f"<User(id={self.id}, name='{self.name}', nick='{self.nick}', bot={self.bot}, discrim='{self.discrim}', permissions={self.permissions}, messages={self.messages}, tags={self.tags})>"
 
 class Blacklist(Base):
 
@@ -59,7 +60,7 @@ class Blacklist(Base):
     data = Column(String)
 
     def __repr__(self):
-        return "<Blacklist(server_id={0.server_id}, channel_id={0.channel_id})>".format(self)
+        return f"<Blacklist(server_id={self.server_id}, channel_id={self.channel_id})>"
 
 class Whitelist(Base):
 
@@ -70,7 +71,7 @@ class Whitelist(Base):
     data = Column(String)
 
     def __repr__(self):
-        return "<Whitelist(server_id={0.server_id}, channel_id={0.channel_id})>".format(self)
+        return f"<Whitelist(server_id={self.server_id}, channel_id={self.channel_id})>"
 
 class Message(Base):
 
@@ -87,9 +88,9 @@ class Message(Base):
     action = Column(String(15))
 
     def __repr__(self):
-        return "<Message(id={0.id}, timestamp='{0.timestamp}', author_id={0.author_id}, channel_id={0.channel_id}, server_id={0.server_id}, action='{0.action}')>".format(self)
+        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, server_id={self.server_id}, action='{self.action}')>"
 
-class CommandStat(Base):
+class Command(Base):
 
     __tablename__ = "command_stats"
 
@@ -97,7 +98,7 @@ class CommandStat(Base):
     uses = Column(Integer)
 
     def __repr__(self):
-        return "<CommandStat(command_name='{0.command_name}', uses={0.uses})>".format(self)
+        return f"<Command(command_name='{self.command_name}', uses={self.uses})>"
 
 class Prefix(Base):
 
@@ -107,7 +108,7 @@ class Prefix(Base):
     prefix = Column(String(25))
 
     def __repr__(self):
-        return "<Prefix(server_id={0.server_id}, prefix='{0.prefix}')>".format(self)
+        return f"<Prefix(server_id={self.server_id}, prefix='{self.prefix}')>"
 
 # Actual adapter class
 
@@ -117,7 +118,7 @@ class SQL:
         self.db_username = kwargs.get("db_username")
         self.db_password = kwargs.get("db_password")
         self.db_api = kwargs.get("db_api", "pypostgresql")
-        self.engine = create_engine("postgresql+{0.db_api}://{0.db_username}:{0.db_password}@localhost:5432/{0.db_name}".format(self), echo=False)
+        self.engine = create_engine(f"postgresql+{self.db_api}://{self.db_username}:{self.db_password}@localhost:5432/{self.db_name}", echo=False)
         self.Session = sessionmaker(bind=self.engine)
 
         Base.metadata.create_all(self.engine)

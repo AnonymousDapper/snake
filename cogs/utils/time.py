@@ -10,30 +10,30 @@ def get_elapsed_time(date_1, date_2):
   desc = lambda n, h: ('a' if n == 1 else str(int(n))) + ('n' if h == 1 and n == 1 else '') + ''
   mult = lambda n: 's' if n > 1 or n == 0 else ''
   years = (time // 31536000)
-  track.append("{} year{}".format(desc(years, 0), mult(years)))
+  track.append(f"{desc(years, 0)} year{mult(years)}")
 
   time = time - (years * 31536000)
   months = (time // 2592000)
-  track.append("{} month{}".format(desc(months, 0), mult(months)))
+  track.append(f"{desc(months, 0)} month{mult(months)}")
 
   time = time - (months * 2592000)
   weeks = (time // 606461.538462)
-  track.append("{} week{}".format(desc(weeks, 0), mult(weeks)))
+  track.append(f"{desc(weeks, 0)} week{mult(weeks)}")
 
   time = time - (weeks * 606461.538462)
   days = (time // 86400)
-  track.append("{} day{}".format(desc(days, 0), mult(days)))
+  track.append(f"{desc(days, 0)} day{mult(days)}")
 
   time = time - (days * 86400)
   hours = (time // 3600)
-  track.append("{} hour{}".format(desc(hours, 1), mult(hours)))
+  track.append(f"{desc(hours, 1)} hours{mult(hours)}")
 
   time = time - (hours * 3600)
   minutes = (time // 60)
-  track.append("{} minute{}".format(desc(minutes, 0), mult(minutes)))
+  track.append(f"{desc(minutes, 0)} minutes{mult(minutes)}")
 
   time = time - (minutes * 60)
-  track.append("{} second{}".format(desc(time, 0), mult(time)))
+  track.append(f"{desc(time, 0)} second{mult(time)}")
 
   return ", ".join(list(filter(lambda e: not e.startswith("0 "), track)))
 

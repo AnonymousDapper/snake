@@ -26,22 +26,24 @@ SOFTWARE.
 
 import discord, asyncio, os, logging, sys, traceback, aiohttp, json
 
-from random import choice
 from bs4 import BeautifulSoup as bs4
 from datetime import datetime
 from functools import partial
 from contextlib import contextmanager
 from io import StringIO
+from inspect import isawaitable
+from importlib import import_module
+from inspect import getmodule as get_module
 
 from cogs.utils import config, time, checks
 from cogs.utils.colors import paint, back, attr
 from cogs.utils import sql
+from cogs.utils import permissions
 
 from discord.ext import commands
-from discord.state import ConnectionState
 
 try:
-    import uvloop
+    import uvloop # uvloop is better, but not supported on windows.
 except ModuleNotFoundError:
     print("Can't find uvloop, defaulting to standard event loop")
 else:
@@ -49,13 +51,88 @@ else:
     print("Found uvloop")
 
 discord_logger = logging.getLogger("discord")
-discord_logger.setLevel(logging.ERROR)
+discord_logger.setLevel(logging.CRITICAL)
+
+# weird fix for single-process sharding issue
+# maybe when rewrite is stable we can stop using this
+
+def cmd_fix(self, instance, owner):
+    if instance is not None:
+        self.instance = instance
+    return self
+
+commands.Command.__get__ = cmd_fix
+
+
+class Builtin:
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="quit", pass_context=True, brief="exit")
+    @checks.is_owner()
+    async def quit_command(self, ctx):
+        await self.bot.shared.close_all()
+
+    @commands.group(name="cog", pass_context=True, invoke_without_command=True, brief="manage cogs")
+    @checks.is_owner()
+    async def manage_cogs(self, ctx, name:str, action:str):
+        cog_name = "cogs.command_" + name
+        action = action.lower()
+
+        if action == "load":
+            if self.bot.shared.extensions.get(cog_name) is not None:
+                await self.bot.say(f"Cog `{name}` is already loaded")
+                return
+            try:
+                self.bot.shared.load_extension(cog_name)
+            except Exception as e:
+                await self.bot.say(f"Failed to load `{name}`: [{type(e).__name__}]: {e}")
+                return
+            await self.bot.say(f"Loaded `{name}`")
+
+        elif action == "unload":
+            if self.bot.shared.extensions.get(cog_name) is None:
+                await self.bot.say(f"Cog `{name}` is not loaded")
+                return
+            try:
+                self.bot.shared.unload_extension(cog_name)
+            except Exception as e:
+                await self.bot.say(f"Failed to unload `{name}`: [{type(e).__name__}]: {e}")
+                return
+            await self.bot.say(f"Unloaded `{name}`")
+
+        elif action == "reload":
+            if self.bot.shared.extensions.get(cog_name) is None:
+                await self.bot.say(f"Cog `{name}` is not loaded")
+                return
+            try:
+                self.bot.shared.unload_extension(cog_name)
+                self.bot.shared.load_extension(cog_name)
+            except Exception as e:
+                await self.bot.say(f"Failed to reload `{name}`: [{type(e).__name__}]: {e}")
+                return
+            await self.bot.say(f"Reloaded `{name}`")
+
+    @manage_cogs.command(name="list", pass_context=True, brief="list cogs")
+    @checks.is_owner()
+    async def list_cogs(self, ctx, name:str = None):
+        if name is None:
+            await self.bot.say(f"Currently loaded cogs:\n{' '.join('`' + cog_name + '`' for cog_name in self.bot.shared.extensions)}" if len(self.bot.extensions) > 0 else "No cogs loaded")
+        else:
+            cog_name = "cogs.command_" + name
+            await self.bot.say(f"`{cog_name}` {'is not' if self.bot.shared.extensions.get(cog_name) is None else 'is'} loaded")
+
+    @commands.command(name="support", pass_context=True, brief="user support")
+    async def get_support(self, ctx):
+        await self.bot.say(f"```md\n# Owner: Syn-Ack\n# Dev: Steve Harvey Oswald\n\n# Status: We're in the middle of a rewrite folks! (and YouTube is being a pain)\n```\n{self.bot.shared.invite_url}")
 
 class ShareManager:
     def __init__(self, bot_class, *args, **kwargs):
         self.bot_class = bot_class
         self.chat_ids = {}
         self.shards = {}
+        self.extensions = {}
+        self.shard_tasks = {}
         self.shard_count = 0
         self.loop = asyncio.get_event_loop()
         self.config = self._read_config("config.json")
@@ -90,15 +167,37 @@ class ShareManager:
 
     @property
     def servers(self):
-        return [server for server in [shard.servers for shard in self.shards.values()]]
+        server_list = []
+        for shard_id, shard in self.shards.items():
+            for server in shard.servers:
+                # setattr(server, "shard_id", shard_id)
+                server_list.append(server)
+
+        return server_list
+
+        # return [server for server in [shard.servers for shard in self.shards.values()]]
 
     @property
     def channels(self):
-        return [channel for channel in [server.channels for server in self.servers.values()]]
+        channel_list = []
+        for server in self.servers:
+            for channel in server.channels:
+                channel_list.append(channel)
+
+        return channel_list
+
+        #return [channel for channel in [server.channels for server in self.servers]]
 
     @property
     def members(self):
-        return [member for member in [channel.members for channel in self.channels.values()]]
+        member_list = []
+        for server in self.servers:
+            for member in server.members:
+                member_list.append(member)
+
+        return member_list
+
+        # return [member for member in [channel.members for channel in self.channels]]
 
     async def global_eval(self, code, ctx):
         return {shard.shard_id: await shard.run_eval(code, ctx) for shard in self.shards.values()}
@@ -114,6 +213,81 @@ class ShareManager:
 
     async def post_server_update(self, text):
         return {shard.shard_id: await shard.post_server_update(text) for shard in self.shards.values()}
+
+    async def get_voice_status(self):
+        return {shard.shard_id: await shard.get_voice_status() for shard in self.shards.values()}
+
+    def load_extension(self, extension_name):
+        for shard in self.shards.values():
+            if extension_name in shard.extensions:
+                continue
+            else:
+                ext_lib = import_module(extension_name)
+
+                if not hasattr(ext_lib, "setup"):
+                    del ext_lib
+                    del sys.modules[extension_name]
+                    raise discord.ClientException("extension does not have a setup function")
+
+                ext_lib.setup(shard)
+                shard.extensions[extension_name] = ext_lib
+                self.extensions[extension_name] = ext_lib
+
+    def unload_extension(self, extension_name): # horrible hacks to make cogs work with single process sharding
+        for shard in self.shards.values():
+            if not extension_name in shard.extensions.keys():
+                continue
+
+            ext_lib = shard.extensions[extension_name]
+
+            print("removing cogs")
+            for cog_name, cog in shard.cogs.copy().items():
+                if get_module(cog) is ext_lib:
+                    shard.remove_cog(cog_name)
+
+            print("removing commands")
+            for command in shard.commands.copy().values():
+                if command.module is ext_lib:
+                    command.module = None
+                    if isinstance(command, commands.GroupMixin):
+                        command.recursively_remove_all_commands()
+
+                    shard.remove_command(command.name)
+
+            print("removing events")
+            for event_list in shard.extra_events.copy().values():
+                remove = []
+                for idx, event in enumerate(event_list):
+                    if get_module(event) is ext_lib:
+                        remove.append(idx)
+
+                for idx in reversed(remove):
+                    del event_list[idx]
+
+            print("tearing down")
+            try:
+                teardown_func = getattr(ext_lib, "teardown")
+            except AttributeError:
+                pass
+            else:
+                try:
+                    func(shard)
+                except:
+                    pass
+            finally:
+                del shard.extensions[extension_name]
+
+        del self.extensions[extension_name]
+        del sys.modules[extension_name]
+        print("finished")
+
+    async def close_all(self):
+        for shard_id, shard in self.shards.items():
+            print(f"Closing {paint(self.bot_class.__name__, 'cyan')}<{shard_id}>")
+            self.shard_tasks[shard_id].cancel()
+            await shard.logout()
+        print(f"Closed {shard_id + 1} shards, exiting..")
+        sys.exit(0)
 
     def start_shard(self, shard_id, future=None):
         if self.loop.is_closed():
@@ -131,19 +305,32 @@ class ShareManager:
             print(f"Attempting resume of shard#{shard_id}")
 
         new_shard = self.bot_class(self, shard_id, *self.args, **self.kwargs)
+        new_shard.add_cog(Builtin(new_shard))
+
         shard_task = self.loop.create_task(new_shard.start(self.credentials["token"]))
-        shard_task.add_done_callback(partial(self.start_shard, shard_id))
+        shard_task.add_done_callback(partial(self.start_shard, shard_id)) # oh this is weird
+
+        self.shard_tasks[shard_id] = shard_task
         self.shards[shard_id] = new_shard
 
     async def __call__(self):
         for shard_id in range(self.shard_count):
             self.start_shard(shard_id)
-            await asyncio.sleep(1)
+        await asyncio.sleep(1)
+
+        for filename in os.listdir("cogs"): # dynamically load cogs
+            if os.path.isfile("cogs/" + filename) and filename.startswith("command_"):
+                name = filename[8:-3]
+                cog_name = "cogs.command_" + name
+                try:
+                    self.load_extension(cog_name)
+                except Exception as e:
+                    print(f"Failed to load {paint(name, 'b_red')}: [{type(e).__name__}]: {e}")
 
 
 class SnakeBot(commands.Bot):
     @contextmanager
-    def db_scope(self):
+    def db_scope(self): # context manager for database sessions
         session = self.db.Session()
         try:
             yield session
@@ -155,26 +342,44 @@ class SnakeBot(commands.Bot):
             session.close()
 
     @contextmanager
-    def stdout_scope(self):
+    def stdout_scope(self): # kinda same idea
         old = sys.stdout
         new = StringIO()
         sys.stdout = new
         yield new
         sys.stdout = old
 
-    def log_message(self, message, action):
+    def __init__(self, share_manager, shard_id, *args, **kwargs):
+        self._DEBUG = any("debug" in arg.lower() for arg in sys.argv)
+        self.loop = asyncio.get_event_loop()
+        self.shared = share_manager
+        self.permissions = permissions.Permissions
+        self.permissions.bot = self
+
+        super().__init__(*args, **kwargs, shard_id=shard_id, command_prefix=self.get_prefix)
+
+        self.aio_session = aiohttp.ClientSession()
+        self.db = sql.SQL(db_username=os.getenv("SNAKE_DB_USERNAME"), db_password=os.getenv("SNAKE_DB_PASSWORD"), db_name=os.getenv("SNAKE_DB_NAME"))
+        self.boot_time = datetime.now()
+
+        self.log = logging.getLogger()
+        self.log.setLevel(logging.INFO)
+        self.log.addHandler(
+            logging.FileHandler(filename="snake.log", encoding="utf-8", mode='w')
+        )
+
+    async def log_message(self, message, action): # log the messages
         author = message.author
         channel = message.channel
         server = channel.server
 
         with self.db_scope() as session:
-            msg_author = session.query(sql.User).filter_by(id=int(author.id)).first()
+            msg_author = session.query(sql.User).filter_by(id=int(author.id)).first() # SQLAlchemy query
 
-            if query_author is None:
+            if msg_author is None:
                 msg_author = sql.User(
                     id=int(author.id),
                     name=author.name,
-                    nick=author.nick,
                     bot=author.bot,
                     discrim=author.discriminator
                 )
@@ -192,9 +397,9 @@ class SnakeBot(commands.Bot):
             )
             session.add(new_message)
 
-    def check_blacklist(self, content, **kwargs):
+    async def check_blacklist(self, content, **kwargs):
         with self.db_scope() as session:
-            blacklist_entry = session.query(sql.Blacklist).filter_by(**kwargs).first()
+            blacklist_entry = session.query(sql.Blacklist).filter_by(**kwargs).first() # check for whatever we were sent in kwargs
             if blacklist_entry is None:
                 return False
             else:
@@ -203,7 +408,7 @@ class SnakeBot(commands.Bot):
                 elif isinstance(content, list):
                     return blacklist_entry in content
 
-    def check_whitelist(self, content, **kwargs):
+    async def check_whitelist(self, content, **kwargs):
         with self.db_scope() as session:
             whitelist_entry = session.query(sql.Whitelist).filter_by(**kwargs).first()
             if whitelist_entry is None:
@@ -214,7 +419,7 @@ class SnakeBot(commands.Bot):
                 elif isinstance(content, list):
                     return whitelist_entry in content
 
-    def get_prefix(self, bot, message):
+    async def get_prefix(self, bot, message): # get custom prefix for server if it exists
         default_prefix = self.shared.config["default_prefix"]
         channel = message.channel
 
@@ -223,66 +428,47 @@ class SnakeBot(commands.Bot):
         else:
             server = channel.server
             with self.db_scope() as session:
-                prefix_query = session.query(sql.Prefix).filter_by(server_id=server.id).first()
+                prefix_query = session.query(sql.Prefix).filter_by(server_id=int(server.id)).first()
                 return default_prefix if prefix_query is None else prefix_query.prefix
 
-    def __init__(self, share_manager, shard_id, *args, **kwargs):
-        print(args, kwargs)
-        self._DEBUG = any("debug" in arg.lower() for arg in sys.argv)
-        self.loop = asyncio.get_event_loop()
-        kwargs.update({"shard_id": shard_id, "command_prefix": self.get_prefix})
-        self.shared = share_manager
+    async def log_command_use(self, command_name):
+        with self.db_scope() as session:
+            command = session.query(sql.Command).filter_by(command_name=command_name).first()
+            if command is None:
+                command = sql.Command(command_name=command_name, uses=0)
 
-        super().__init__(*args, **kwargs)
-        print(f"Shard ID: {self.shard_id} Shard Count: {self.shard_count}")
-
-        self.aio_session = aiohttp.ClientSession()
-        self.db = sql.SQL(db_username=os.getenv("SNAKE_DB_USERNAME"), db_password=os.getenv("SNAKE_DB_PASSWORD"), db_name=os.getenv("SNAKE_DB_NAME"))
-        self.boot_time = datetime.now()
-        self.color_emoji = lambda e: "{}{}".format(choice(["", "\N{EMOJI MODIFIER FITZPATRICK TYPE-1-2}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-3}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-4}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-5}", "\N{EMOJI MODIFIER FITZPATRICK TYPE-6}"]))
-
-        self.log = logging.getLogger()
-        self.log.setLevel(logging.DEBUG)
-        self.log.addHandler(
-            logging.FileHandler(filename=f"snake_shard_{self.shard_id}.log", encoding="utf-8", mode='w')
-        )
-
-        for filename in os.listdir("cogs"):
-            if os.path.isfile("cogs/" + filename) and filename.startswith("command_"):
-                name = filename[8:-3]
-                cog_name = "cogs.command_" + name
-                try:
-                    self.load_extension(cog_name)
-                except Exception as e:
-                    print(f"Failed to load {paint(name, 'b_red')}: [{type(e).__name__}]: {e}")
+            command.uses = command.uses + 1
+            # session scope automatically commits
 
     async def run_eval(self, code, ctx):
         vals = globals()
         vals.update(dict(
-            self=self,
-            bot=ctx.bot,
+            bot=self,
             message=ctx.message,
             ctx=ctx,
             server=ctx.message.server,
             channel=ctx.message.channel,
             author=ctx.message.author,
             code=code,
-            servers=self.shared.servers,
+            shared=self.shared
         ))
 
-        with self.stdout_scope() as std:
-            try:
-                precompiled = compile(code, "<eval>", "eval")
-                vals["compiled"] = precompiled
-                result = eval(precompiled, vals)
-            except SyntaxError as e:
-                return f"```py\n{e.text}\n{'^':>e.offset}\n{type(e).__name__}: {e}"
-            except Exception as e:
-                return f"```diff\n- {type(e).__name__}: {e}"
+        try:
+            precompiled = compile(code, "<eval>", "eval")
+            vals["compiled"] = precompiled
+            result = eval(precompiled, vals)
+        except SyntaxError as e:
+            return f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```" # emulate builtin syntaxerror formatting
+        except Exception as e:
+            return f"```diff\n- {type(e).__name__}: {e}\n```"
 
-        result = str(s.getvalue())
+        if isawaitable(result):
+            result = await result
+
+        result = str(result)
         if len(result) > 1900:
-            return f"Output too long. View results at {self.upload_to_gist(result, 'eval.py')}"
+            gist = await self.upload_to_gist(result, 'eval.py')
+            return f"\N{WARNING SIGN} Output too long. View results at {gist}\n"
         else:
             return f"```py\n{result}\n```"
 
@@ -290,33 +476,31 @@ class SnakeBot(commands.Bot):
         code = "async def coro():\n  " + "\n  ".join(code.split("\n"))
         vals = globals()
         vals.update(dict(
-            self=self,
-            bot=ctx.bot,
+            bot=self,
             message=ctx.message,
             ctx=ctx,
             server=ctx.message.server,
             channel=ctx.message.channel,
             author=ctx.message.author,
             code=code,
-            servers=self.shared.servers,
+            shared=self.shared
         ))
 
-        try:
-            precompiled = compile(code, "<exec>", "exec")
-            vals["compiled"] = precompiled
-            result = exec(precompiled, vals)
-            await vals["coro"]()
-        except SyntaxError as e:
-            return f"```py\n{e.text}\n{'^':>e.offset}\n{type(e).__name__}: {e}"
-        except Exception as e:
-            return f"```diff\n- {type(e).__name__}: {e}"
+        with self.stdout_scope() as std:
+            try:
+                precompiled = compile(code, "<exec>", "exec")
+                vals["compiled"] = precompiled
+                result = exec(precompiled, vals)
+                await vals["coro"]() # exec takes an expr, so we have to call it. this also enables async in exec
+            except SyntaxError as e:
+                return f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```"
+            except Exception as e:
+                return f"```diff\n- {type(e).__name__}: {e}\n```"
 
-        if inspect.isawaitable(result):
-            result = await result
-        result = str(result)
-
+        result = str(std.getvalue())
         if len(result) > 1900:
-            return f"Output too long. View results at {self.upload_to_gist(result, 'exec.py')}"
+            gist = await self.upload_to_gist(result, 'exec.py')
+            return f"\N{WARNING SIGN} Output too long. View results at {gist}\n"
         else:
             return f"```py\n{result}\n```"
 
@@ -403,17 +587,39 @@ class SnakeBot(commands.Bot):
             except:
                 pass
 
+    async def post_announcement(self, text):
+        failed_servers = 0
+        for server in list(self.servers):
+            if not await self.check_blacklist("announcement", server_id=int(server.id)):
+                try:
+                    await self.send_message(server.default_channel, text)
+                except Exception as e:
+                    failed_servers += 1
+                    # print(f"[{type(e).__name__}]: {e}")
+            else:
+                failed_servers += 1
+
+        server_count = len(self.servers)
+        succeeded_servers = server_count - failed_servers
+        return succeeded_servers, server_count
+
+    async def get_voice_status(self):
+        servers = self.servers
+        total_servers = len(servers)
+        voice_servers = sum(1 for server in servers if self.voice_client_in(server))
+        return voice_servers, total_servers
+
     async def on_resume(self):
         print(f"Resumed as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} [{paint(self.user.id, 'b_green')}]")
         self.resume_time = datetime.now()
         self.resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
         print(f"Resumed after {self.resumed_after}")
 
-    async def on_resume(self):
+    async def on_ready(self):
         print(f"Logged in as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} [{paint(self.user.id, 'b_green')}]")
         self.start_time = datetime.now()
-        self.resumed_after = time.get_elapsed_time(self.boot_time, self.start_time)
-        print(f"Resumed after {self.boot_duration}")
+        self.boot_duration = time.get_elapsed_time(self.boot_time, self.start_time)
+        print(f"Loaded in {self.boot_duration}")
 
     async def on_command_error(self, error, ctx):
         if isinstance(error, commands.NoPrivateMessage):
@@ -421,7 +627,10 @@ class SnakeBot(commands.Bot):
         elif isinstance(error, commands.DisabledCommand):
             await self.send_message(ctx.message.author, "\N{WARNING SIGN} Sorry, this command is disabled!")
         elif isinstance(error, commands.CommandOnCooldown):
-            await self.send_message(ctx.channel, f"{ctx.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
+            await self.send_message(ctx.message.channel, f"{ctx.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
+
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await self.send_message(ctx.message.channel, f"\N{WARNING SIGN} {error}")
 
         elif isinstance(error, commands.CommandInvokeError):
             original_name = error.original.__class__.__name__
@@ -438,20 +647,21 @@ class SnakeBot(commands.Bot):
             destination = "Private Message"
         else:
             destination = f"[{message.server.name} #{message.channel.name}]"
-        self.log.info(f"{destination}: {message.author.name}: {message.clean_content}")
+        self.log.info(f"SHARD#{self.shard_id} {destination}: {message.author.name}: {message.clean_content}")
+        await self.log_command_use(ctx.command.qualified_name) # log that this command was used
 
     async def on_message(self, message):
         channel = message.channel
         author = message.author
         if not message.channel.is_private:
-            if message.author.bot or self.check_blacklist("server_ignore", server_id=channel.server.id) or self.check_blacklist("channel_ignore", channel_id=channel.id):
+            if message.author.bot or await self.check_blacklist("server_ignore", server_id=int(channel.server.id)) or await self.check_blacklist("channel_ignore", channel_id=int(channel.id)):
                 return
 
-            if "(╯°□°）╯︵ ┻━┻" in message.clean_content and self.check_whitelist("unflip", server_id=channel.server.id) and not self.check_blacklist("unflip_channel", channel_id=channel.id):
+            if "(╯°□°）╯︵ ┻━┻" in message.clean_content and await self.check_whitelist("unflip", server_id=int(channel.server.id)) and not await self.check_blacklist("unflip_channel", channel_id=int(channel.id)):
                 await self.send_message(message.channel, "┬─────────────────┬ ノ(:eye:▽:eye:ノ)")
 
             if isinstance(author, discord.Member):
-                await self.loop.run_in_executor(None, partial(self.log_message, message, "create"))
+                await self.log_message(message, "create")
 
         # TODO: add permission checks
         await self.process_commands(message)
@@ -460,17 +670,17 @@ class SnakeBot(commands.Bot):
         channel = message.channel
         author = message.author
         if channel.is_private is False and isinstance(author, discord.Member):
-            await self.loop.run_in_executor(None, partial(self.log_message, message, "delete"))
+            await self.log_message(message, "delete")
 
     async def on_message_edit(self, old_message, new_message):
-        channel = message.channel
-        author = message.author
+        channel = new_message.channel
+        author = new_message.author
         if old_message.content != new_message.content:
             if channel.is_private is False and isinstance(author, discord.Member):
-                await self.loop.run_in_executor(None, partial(self.log_message, message, "edit"))
+                await self.log_message(new_message, "edit")
 
     async def on_server_join(self, server):
-        if self.check_blacklist("server_join", server_id=server.id):
+        if await self.check_blacklist("server_join", server_id=int(server.id)):
             await self.leave_server(server)
             return
         await self.shared.post_server_update(f"Joined **{server.name}** [{server.id}] (owned by **{server.owner.display_name}**#**{server.owner.discriminator}** [{server.owner.id}]) ({len(self.shared.servers)} total servers)")
@@ -490,6 +700,14 @@ except:
 finally:
     share_manager.set_shard_count(shard_count)
 
-loop = asyncio.get_event_loop()
-print(f"Starting {paint(share_manager.bot_class.__name__, 'cyan')}<0 -> {share_manager.shard_count}>")
-loop.run_until_complete(share_manager())
+try:
+    loop = asyncio.get_event_loop()
+    print(f"Starting {paint(share_manager.bot_class.__name__, 'cyan')}<0 -> {share_manager.shard_count}>")
+    loop.run_until_complete(share_manager())
+    loop.run_forever()
+except KeyboardInterrupt:
+    loop.stop()
+    for shard in share_manager.shards.values():
+        loop.run_until_complete(shard.logout())
+finally:
+    loop.close()

@@ -1,11 +1,13 @@
-from discord.ext import commands
 import discord.utils
+
+from discord.ext import commands
 
 def is_owner_check(message):
   return message.author.id in ["163521874872107009", "190966952649293824"]
 
 def is_server_owner_check(message):
   return message.author.id == message.server.owner.id
+
 
 def check_permissions(ctx, perms):
   message = ctx.message
