@@ -3,8 +3,7 @@ import discord
 from discord.ext import commands
 from datetime import datetime
 
-from .utils import checks, time
-
+from .utils import checks, time, MultiMention, sql
 
 class Personal:
     def __init__(self, bot):
@@ -45,6 +44,88 @@ class Personal:
         result_text += f"\n\n## Total -> {total[0]}/{total[1]} ({(100 * (total[0] / total[1])):.0f}%)\n```"
 
         await self.bot.say(result_text)
+
+    @commands.group(name="blacklist", pass_context=True, brief="manage blacklist", no_pm=True, invoke_without_command=True)
+    @checks.is_owner()
+    async def blacklist_group(self, ctx, *, obj:MultiMention):
+        print("blacklist")
+
+    @blacklist_group.command(name="add", pass_context=True, brief="add to blacklist", no_pm=True)
+    @checks.is_owner()
+    async def blacklist_add(self, ctx, value:str, *, obj:MultiMention):
+        if isinstance(obj, discord.Server):
+            kwargs = dict(server_id=int(obj.id))
+
+        elif isinstance(obj, discord.Channel):
+            kwargs = dict(channel_id=int(obj.id))
+
+        elif isinstance(obj, discord.Role):
+            kwargs = dict(role_id=int(obj.id))
+
+        elif isinstance(obj, discord.Member):
+            kwargs = dict(user_id=int(obj.id))
+
+
+        with self.bot.db_scope() as session:
+            blacklist_obj = session.query(sql.Blacklist).filter_by(**kwargs, data=value).first()
+            if blacklist_obj is not None:
+                await self.bot.say(f"{obj.__class__.__name__} **{str(obj)}** has already been blacklisted for `{value}`")
+                return
+            else:
+                blacklist_obj = sql.Blacklist(**kwargs, data=value)
+                session.add(blacklist_obj)
+                await self.bot.say(f"Blacklisted {obj.__class__.__name__} **{str(obj)}** for `{value}`")
+
+    @blacklist_group.command(name="remove", pass_context=True, brief="remove from blacklist", no_pm=True)
+    @checks.is_owner()
+    async def blacklist_remove(self, ctx, value:str, *, obj:MultiMention):
+        if isinstance(obj, discord.Server):
+            kwargs = dict(server_id=int(obj.id))
+
+        elif isinstance(obj, discord.Channel):
+            kwargs = dict(channel_id=int(obj.id))
+
+        elif isinstance(obj, discord.Role):
+            kwargs = dict(role_id=int(obj.id))
+
+        elif isinstance(obj, discord.Member):
+            kwargs = dict(user_id=int(obj.id))
+
+
+        with self.bot.db_scope() as session:
+            blacklist_obj = session.query(sql.Blacklist).filter_by(**kwargs, data=value).first()
+            if blacklist_obj is None:
+                await self.bot.say(f"{obj.__class__.__name__} **{str(obj)}** is not blacklisted for `{value}`")
+                return
+            else:
+                session.delete(blacklist_obj)
+                await self.bot.say(f"Removed {obj.__class__.__name__} **{str(obj)}** from blacklist for `{value}`")
+
+    @blacklist_group.command(name="check", pass_context=True, brief="search blacklist", no_pm=True)
+    @checks.is_owner()
+    async def blacklist_search(self, ctx, *, obj:MultiMention):
+        if isinstance(obj, discord.Server):
+            kwargs = dict(server_id=int(obj.id))
+
+        elif isinstance(obj, discord.Channel):
+            kwargs = dict(channel_id=int(obj.id))
+
+        elif isinstance(obj, discord.Role):
+            kwargs = dict(role_id=int(obj.id))
+
+        elif isinstance(obj, discord.Member):
+            kwargs = dict(user_id=int(obj.id))
+
+        with self.bot.db_scope() as session:
+            blacklist_objs = session.query(sql.Blacklist).filter_by(**kwargs).all()
+
+            if len(blacklist_objs) > 0:
+                result_text = f"```md\n# {obj.__class__.__name__} {str(obj)} is blacklisted for\n" + "\n".join(f"- {b_obj.data}" for b_obj in blacklist_objs) + "\n```"
+            else:
+                result_text = f"```md\n# {obj.__class__.__name__} {str(obj)} is not blacklisted\n```"
+
+        await self.bot.say(result_text)
+
 
 def setup(bot):
     bot.add_cog(Personal(bot))

@@ -1,6 +1,8 @@
 from sqlalchemy import ForeignKey, Integer, BigInteger, String, Date, Boolean, Column, create_engine
 
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.ext.declarative import declarative_base
 
 Base = declarative_base()
@@ -8,13 +10,12 @@ Base = declarative_base()
 # Start mapping classes
 
 class Tag(Base):
-
     __tablename__ = "tags"
 
     name = Column(String(50), primary_key=True)
     author_id = Column(BigInteger, ForeignKey("users.id"))
     author = relationship("User", back_populates="tags")
-    content = Column(String(1000))
+    content = Column(String(1500))
     uses = Column(Integer)
     timestamp = Column(String)
 
@@ -22,7 +23,6 @@ class Tag(Base):
         return f"<Tag(name='{self.name}', author_id={self.author_id}, uses={self.uses}, timestamp='{self.timestamp}')>"
 
 class Permission(Base):
-
     __tablename__ = "permissions"
 
     pk = Column(Integer, primary_key=True)
@@ -37,7 +37,6 @@ class Permission(Base):
         return f"<Permission(server_id={self.server_id}, channel_id={self.channel_id}, user_id={self.user_id}, bits={self.bits})>"
 
 class User(Base):
-
     __tablename__ = "users"
 
     id = Column(BigInteger, primary_key=True)
@@ -52,29 +51,43 @@ class User(Base):
         return f"<User(id={self.id}, name='{self.name}', nick='{self.nick}', bot={self.bot}, discrim='{self.discrim}', permissions={self.permissions}, messages={self.messages}, tags={self.tags})>"
 
 class Blacklist(Base):
-
     __tablename__ = "blacklist"
 
-    server_id = Column(BigInteger, primary_key=True)
-    channel_id = Column(BigInteger, primary_key=True)
+    pk = Column(Integer, primary_key=True)
+    server_id = Column(BigInteger)
+    channel_id = Column(BigInteger)
+    role_id = Column(BigInteger)
+    user_id = Column(BigInteger)
+
     data = Column(String)
 
     def __repr__(self):
-        return f"<Blacklist(server_id={self.server_id}, channel_id={self.channel_id})>"
+        return f"<Blacklist(server_id={self.server_id}, channel_id={self.channel_id}, role_id={self.role_id}, user_id={self.user_id})>"
 
 class Whitelist(Base):
-
     __tablename__ = "whitelist"
 
-    server_id = Column(BigInteger, primary_key=True)
-    channel_id = Column(BigInteger, primary_key=True)
+    pk = Column(Integer, primary_key=True)
+    server_id = Column(BigInteger)
+    channel_id = Column(BigInteger)
+    role_id = Column(BigInteger)
+    user_id = Column(BigInteger)
+
     data = Column(String)
 
     def __repr__(self):
-        return f"<Whitelist(server_id={self.server_id}, channel_id={self.channel_id})>"
+        return f"<Whitelist(server_id={self.server_id}, channel_id={self.channel_id}, role_id={self.role_id}, user_id={self.user_id})>"
+
+class TagVariable(Base):
+    __tablename__ = "tag_values"
+
+    tag_name = Column(String(50), primary_key=True)
+    data = Column(JSONB) # JSONb as key:value pairs
+
+    def __repr__(self):
+        return f"<TagVariable(tag_name='{self.tag_name}, values={self.data})>"
 
 class Message(Base):
-
     __tablename__ = "chat_logs"
 
     pk = Column(Integer, primary_key=True)
@@ -91,7 +104,6 @@ class Message(Base):
         return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, server_id={self.server_id}, action='{self.action}')>"
 
 class Command(Base):
-
     __tablename__ = "command_stats"
 
     command_name = Column(String(40), primary_key=True)
@@ -101,7 +113,6 @@ class Command(Base):
         return f"<Command(command_name='{self.command_name}', uses={self.uses})>"
 
 class Prefix(Base):
-
     __tablename__ = "prefixes"
 
     server_id = Column(BigInteger, primary_key=True)
@@ -122,3 +133,6 @@ class SQL:
         self.Session = sessionmaker(bind=self.engine)
 
         Base.metadata.create_all(self.engine)
+
+    def flag(self, obj, type_):
+        flag_modified(obj, type_)

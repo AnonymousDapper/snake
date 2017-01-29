@@ -35,7 +35,7 @@ from inspect import isawaitable
 from importlib import import_module
 from inspect import getmodule as get_module
 
-from cogs.utils import config, time, checks
+from cogs.utils import time, checks
 from cogs.utils.colors import paint, back, attr
 from cogs.utils import sql
 from cogs.utils import permissions
@@ -208,8 +208,8 @@ class ShareManager:
     async def global_announce(self, text):
         return {shard.shard_id: await shard.post_announcement(text) for shard in self.shards.values()}
 
-    async def post_suggestion(self, text, ctx):
-        return {shard.shard_id: await shard.post_suggestion(text, ctx) for shard in self.shards.values()}
+    async def post_suggestion(self, text):
+        return {shard.shard_id: await shard.post_suggestion(text) for shard in self.shards.values()}
 
     async def post_server_update(self, text):
         return {shard.shard_id: await shard.post_server_update(text) for shard in self.shards.values()}
@@ -356,6 +356,9 @@ class SnakeBot(commands.Bot):
         self.permissions = permissions.Permissions
         self.permissions.bot = self
 
+        self.newline = "\n" # F-strings dont like backslashes
+        self.author_ids = ["163521874872107009", "190966952649293824"]
+
         super().__init__(*args, **kwargs, shard_id=shard_id, command_prefix=self.get_prefix)
 
         self.aio_session = aiohttp.ClientSession()
@@ -398,6 +401,9 @@ class SnakeBot(commands.Bot):
             session.add(new_message)
 
     async def check_blacklist(self, content, **kwargs):
+        if str(kwargs.get("user_id", '0')) in self.author_ids:
+            return False
+
         with self.db_scope() as session:
             blacklist_entry = session.query(sql.Blacklist).filter_by(**kwargs).first() # check for whatever we were sent in kwargs
             if blacklist_entry is None:
@@ -409,6 +415,9 @@ class SnakeBot(commands.Bot):
                     return blacklist_entry in content
 
     async def check_whitelist(self, content, **kwargs):
+        if str(kwargs.get("user_id", '0')) in self.author_ids:
+            return True
+
         with self.db_scope() as session:
             whitelist_entry = session.query(sql.Whitelist).filter_by(**kwargs).first()
             if whitelist_entry is None:
@@ -421,6 +430,7 @@ class SnakeBot(commands.Bot):
 
     async def get_prefix(self, bot, message): # get custom prefix for server if it exists
         default_prefix = self.shared.config["default_prefix"]
+
         channel = message.channel
 
         if channel.is_private:
@@ -436,6 +446,7 @@ class SnakeBot(commands.Bot):
             command = session.query(sql.Command).filter_by(command_name=command_name).first()
             if command is None:
                 command = sql.Command(command_name=command_name, uses=0)
+                session.add(command)
 
             command.uses = command.uses + 1
             # session scope automatically commits
@@ -627,7 +638,7 @@ class SnakeBot(commands.Bot):
         elif isinstance(error, commands.DisabledCommand):
             await self.send_message(ctx.message.author, "\N{WARNING SIGN} Sorry, this command is disabled!")
         elif isinstance(error, commands.CommandOnCooldown):
-            await self.send_message(ctx.message.channel, f"{ctx.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
+            await self.send_message(ctx.message.channel, f"{ctx.message.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
 
         elif isinstance(error, commands.MissingRequiredArgument):
             await self.send_message(ctx.message.channel, f"\N{WARNING SIGN} {error}")
@@ -654,17 +665,25 @@ class SnakeBot(commands.Bot):
         channel = message.channel
         author = message.author
         if not message.channel.is_private:
-            if message.author.bot or await self.check_blacklist("server_ignore", server_id=int(channel.server.id)) or await self.check_blacklist("channel_ignore", channel_id=int(channel.id)):
+            if message.author.bot or await self.check_blacklist("command", server_id=int(channel.server.id)) or await self.check_blacklist("command", channel_id=int(channel.id)):
                 return
 
-            if "(╯°□°）╯︵ ┻━┻" in message.clean_content and await self.check_whitelist("unflip", server_id=int(channel.server.id)) and not await self.check_blacklist("unflip_channel", channel_id=int(channel.id)):
+            if "(╯°□°）╯︵ ┻━┻" in message.clean_content and await self.check_whitelist("unflip", server_id=int(channel.server.id)) and not await self.check_blacklist("unflip", channel_id=int(channel.id)):
                 await self.send_message(message.channel, "┬─────────────────┬ ノ(:eye:▽:eye:ノ)")
 
             if isinstance(author, discord.Member):
                 await self.log_message(message, "create")
 
-        # TODO: add permission checks
-        await self.process_commands(message)
+        if not await self.check_blacklist("command", user_id=int(author.id)):
+            #for role in author.roles: # TODO: fix whatever you call this
+            #    if role.name != "@everyone":
+            #        if await self.check_blacklist("command", role_id=int(role.id)):
+            #            print("Failed role check")
+            #            return
+
+            await self.process_commands(message)
+        else:
+            print("Failed user check")
 
     async def on_message_delete(self, message):
         channel = message.channel
@@ -702,7 +721,7 @@ finally:
 
 try:
     loop = asyncio.get_event_loop()
-    print(f"Starting {paint(share_manager.bot_class.__name__, 'cyan')}<0 -> {share_manager.shard_count}>")
+    print(f"Starting {paint(share_manager.bot_class.__name__, 'cyan')}<0 -> {share_manager.shard_count - 1}>")
     loop.run_until_complete(share_manager())
     loop.run_forever()
 except KeyboardInterrupt:

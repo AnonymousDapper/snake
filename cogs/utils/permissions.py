@@ -69,7 +69,8 @@ class Permissions:
     def __init__(self, user, **kwargs):
         self.user = user
         self.args = kwargs
-        self.value = self._get_permissions()
+        self._value = self._get_permissions()
+        self.value = self._value
 
     def __del__(self):
         self._update_permissions(**self.args)
@@ -91,6 +92,9 @@ class Permissions:
         return self.value
 
     def _update_permissions(self, **kwargs):
+        if self._value == self.value:
+            return
+
         with self.bot.db_scope() as session:
             kwargs.update({"user_id":int(self.user.id)})
             kwargs.update(self.args)
@@ -111,8 +115,10 @@ class Permissions:
 
                 permission_entry = sql.Permission(user=permission_user, bits=self.value, **kwargs)
                 session.add(permission_entry)
+            else:
+                permission_entry.bits = self.value
 
-        return permission_entry
+        self._value = self.value
 
     async def get(self, **kwargs):
         return self._get_permissions(**kwargs)
@@ -130,6 +136,14 @@ class Permissions:
             self.value &= ~(1 << index)
         else:
             raise TypeError("Set value must be bool")
+
+    def _iterator(self):
+        for attr in dir(self):
+            if isinstance(getattr(self.__class__, attr), property):
+                yield (attr, getattr(self, attr))
+
+    def __iter__(self):
+        return self._iterator()
 
     @property
     def use_chat(self):
@@ -250,4 +264,3 @@ class Permissions:
     @use_emoji.setter
     def use_emoji(self, value):
         self._set(0x0F, value)
-

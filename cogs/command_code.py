@@ -52,13 +52,14 @@ class Debug:
         sql_command = self.clean(sql)
 
         if not sql_command.endswith(";"):
+            print("adding semicolon")
             sql_command += ";"
 
         try:
             results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql_command)) # run blocking function in a non-blocking way
 
         except sqlalchemy.exc.ProgrammingError:
-            await self.bot.say(f"Unable to process statement. Double check your query:\n```sql\m{sql_command}\n```")
+            await self.bot.send_message(ctx.message.channel, f"Unable to process statement. Double check your query:\n```sql\n{sql_command}\n```")
             return
 
         except Exception as e:
@@ -70,12 +71,14 @@ class Debug:
 
         else:
             result_list = results.fetchall()
+            row_names = results.keys()
             clr = lambda arr: ", ".join(repr(item) for item in arr)
-            result = f"```py{n}{', '.join(row_names)}\n--> {len(result_list)} rows <--\n{self.newline.join(clr(arg) for arg in result_list)}\n```" # nasty, horrid messy f-expr
+            result = f"```py\n[ {', '.join(row_names)} ]\n--> {len(result_list)} rows <--\n{self.newline.join(clr(arg) for arg in result_list)}\n```" # nasty, horrid messy f-expr
             if len(result) > 1900:
-                await self.bot.say(f"Output too long. View results at {self.upload_to_gist(result, 'exec.py')}")
+                gist_result = await self.bot.upload_to_gist(result, 'sql.py')
+                await self.bot.say(f"Output too long. View results at {gist_result}")
             else:
-                await self.bot.say(f"```py\n{result}\n```")
+                await self.bot.say(result)
 
     @commands.command(name="sys", pass_context=True, brief="system terminal")
     @checks.is_owner()
@@ -90,7 +93,8 @@ class Debug:
         result = result.stdout
 
         if len(result) > 1900:
-            await self.bot.say(f"Output too long. View results at {self.upload_to_gist(result, 'exec.py')}") # bypass 2000 char limit with gist
+            gist_result = await self.bot.upload_to_gist(result, 'output.txt')
+            await self.bot.say(f"Output too long. View results at {gist_result}") # bypass 2000 char limit with gist
         else:
             await self.bot.say(f"```py\n{result}\n```")
 

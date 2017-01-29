@@ -14,6 +14,7 @@ class Misc:
         self.bot = bot
 
     @commands.command(name="retro", pass_context=True, brief="make retro banners")
+    @checks.permissions(use_retro=True)
     async def make_retro(self, ctx, *, content:str):
         texts = [t.strip() for t in content.split("|")]
         if len(texts) != 3:
@@ -45,6 +46,7 @@ class Misc:
             await self.bot.say(embed=result_embed)
 
     @commands.command(name="xkcd", pass_context=True, brief="fetch xkcd comics")
+    @checks.permissions(use_xkcd=True)
     async def get_xkcd(self, ctx, id : str = None):
         comic_url = ""
 
@@ -75,7 +77,37 @@ class Misc:
     @commands.command(name="suggest", pass_context=True, brief="give feedback", no_pm=True)
     @commands.cooldown(1, 30, commands.BucketType.user)
     async def give_feedback(self, ctx, *, message:str):
+        author = ctx.message.author
+        channel = ctx.message.channel
 
+        if not await self.bot.check_blacklist("suggest", user_id=int(author.id)):
+            try:
+                result = any(await self.bot.shared.post_suggestion(f"Suggestion from **{author.display_name}**#{author.discriminator} [{author.id}]\n**{channel.server.name}** #**{channel.name}**\n\n{message}"))
+            except Exception as e:
+                await self.bot.reply(f"Your message could not be delivered. Please report this information to the owners:\n`[{type(e).__name__}]: {e}`")
+                return
+
+            await self.bot.say("\N{WHITE HEAVY CHECK MARK} Your message was delivered successfully!")
+
+        else:
+            return
+
+    @commands.command(name="emoji", pass_context=True, brief="find emoji")
+    @commands.cooldown(1, 15, commands.BucketType.user)
+    @checks.permissions(use_emoji=True)
+    async def get_emoji(self, ctx, *, query:str):
+        async with self.bot.aio_session.get("https://api.getdango.com/api/emoji", params=dict(q=quote_plus(query))) as response:
+            if response.status != 200:
+                await self.bot.say("Could not connect to server")
+                return
+
+            emojis = await response.json()
+            await self.bot.say(" ".join(e["text"] for e in emojis["results"]))
+
+    @commands.command(name="invite", pass_context=True, brief="find an invite link")
+    async def get_invite(self, ctx):
+        permissions = discord.Permissions(permissions=70634561)
+        await self.bot.say(f"Invite me with this link!\n{discord.utils.oauth_url('181584771510566922', permissions=permissions)}")
 
 def setup(bot):
     bot.add_cog(Misc(bot))

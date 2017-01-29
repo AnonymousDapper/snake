@@ -13,3 +13,4 @@ cogs/_command_music.py
 cogs/_command_personal.py
 cogs/_command_tags.py
 shard_snake.py
+cogs/utils/tag_manager/_parser.py
