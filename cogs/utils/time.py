@@ -30,7 +30,7 @@ def get_elapsed_time(date_1, date_2):
 
     time = time - (hours * 3600)
     minutes = (time // 60)
-    track.append(f"{desc(minutes, 0)} minutes{mult(minutes)}")
+    track.append(f"{desc(minutes, 0)} minute{mult(minutes)}")
 
     time = time - (minutes * 60)
     track.append(f"{desc(time, 0)} second{mult(time)}")

@@ -57,8 +57,7 @@ class UnterminatedError(ParserError):
     pass
 
 class TagFunctions:
-    def __init__(self, **kwargs):
-        self.debug = kwargs.get("debug", False)
+    def __init__(self):
         self.fallback_text = None
 
     # Get and stuff is in bot
@@ -73,12 +72,12 @@ class TagFunctions:
 
     # Safe, fast math parser
     def math(self, *args):
-        parser = math_handler.MathParser("".join(args), debug=self.debug)
+        parser = math_handler.MathParser("".join(str(arg) for arg in args), debug=self.debug)
         return parser()
 
     # Fallback setter
     def fallback(self, content=None):
-        self.fallback_text = content
+        self.fallback_text = str(content)
 
     # Random choice
     def rand(self, *args):
@@ -96,7 +95,7 @@ class Parser:
         self.debug = kwargs.get("debug", False)
         self.logger = kwargs.get("logger", None)
         self.lexer = lexer.Lexer(self.source, debug=self.debug, logger=self.logger)
-        self.tag_functions = kwargs.get("override", TagFunctions(debug=self.debug))
+        self.tag_functions = kwargs.get("override", TagFunctions())
 
         self.tokens = deque(self.lexer())
         self.formatted = "".join(_paint(token.source, token.color_name) for token in self.tokens)
@@ -157,20 +156,23 @@ class Parser:
         func_name = function.source
 
         if KEYWORD_REGEX.fullmatch(func_name) is None:
-            raise InvalidFunctionNameError("Function names must by alphanumeric")
+            raise InvalidFunctionNameError("Function names must be alphanumeric")
 
         self.log(f"[Process] Calling {func_name} with args {list(zip(arg_names, arg_list))}")
 
         if hasattr(self.tag_functions, func_name):
-            try:
-                func_result = getattr(self.tag_functions, func_name)(*arg_list)
+            if callable(getattr(self.tag_functions, func_name)):
+                try:
+                    func_result = getattr(self.tag_functions, func_name)(*arg_list)
 
-                if isawaitable(func_result):
-                    func_result = await func_result
+                    if isawaitable(func_result):
+                        func_result = await func_result
 
-                return "" if func_result is None else func_result
-            except Exception as e:
-                return str(e) if self.tag_functions.fallback_text is None else str(self.tag_functions.fallback_text)
+                    return "" if func_result is None else func_result
+                except Exception as e:
+                    return str(e) if self.tag_functions.fallback_text is None else str(self.tag_functions.fallback_text)
+            else:
+                raise ParserError("An error occurred.")
         else:
             raise NonExistantFunctionError(f"Function {func_name} doesn't exist")
 

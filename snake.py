@@ -48,10 +48,10 @@ except ModuleNotFoundError:
     print("Can't find uvloop, defaulting to standard event loop")
 else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    print("Found uvloop")
+    print("Using uvloop")
 
 discord_logger = logging.getLogger("discord")
-discord_logger.setLevel(logging.CRITICAL)
+discord_logger.setLevel(logging.INFO)
 
 # weird fix for single-process sharding issue
 # maybe when rewrite is stable we can stop using this
@@ -133,6 +133,8 @@ class ShareManager:
         self.shards = {}
         self.extensions = {}
         self.shard_tasks = {}
+        self.shard_connect_failures = {}
+
         self.shard_count = 0
         self.loop = asyncio.get_event_loop()
         self.config = self._read_config("config.json")
@@ -240,12 +242,12 @@ class ShareManager:
 
             ext_lib = shard.extensions[extension_name]
 
-            print("removing cogs")
+            # print("removing cogs")
             for cog_name, cog in shard.cogs.copy().items():
                 if get_module(cog) is ext_lib:
                     shard.remove_cog(cog_name)
 
-            print("removing commands")
+            # print("removing commands")
             for command in shard.commands.copy().values():
                 if command.module is ext_lib:
                     command.module = None
@@ -254,7 +256,7 @@ class ShareManager:
 
                     shard.remove_command(command.name)
 
-            print("removing events")
+            # print("removing events")
             for event_list in shard.extra_events.copy().values():
                 remove = []
                 for idx, event in enumerate(event_list):
@@ -264,7 +266,7 @@ class ShareManager:
                 for idx in reversed(remove):
                     del event_list[idx]
 
-            print("tearing down")
+            # print("tearing down")
             try:
                 teardown_func = getattr(ext_lib, "teardown")
             except AttributeError:
@@ -279,7 +281,7 @@ class ShareManager:
 
         del self.extensions[extension_name]
         del sys.modules[extension_name]
-        print("finished")
+        # print("finished")
 
     async def close_all(self):
         for shard_id, shard in self.shards.items():
@@ -295,13 +297,32 @@ class ShareManager:
 
         if future is None:
             print(f"Starting {paint(self.bot_class.__name__, 'cyan')}<{shard_id}>")
+
         else:
             try:
                 result = future.result()
+
+            except asyncio.CancelledError: # task was cancelled, it was probably the close_all call
+                return
+
+            except aiohttp.ClientOSError:
+                if self.shard_connect_failures[shard_id] < 4:
+                    self.shard_connect_failures[shard_id] += 1
+                    print(f"Shard#{shard_id} lost connection, retrying with {paint(self.shard_connect_failures[shard_id], 'red')} failures so far")
+                else:
+                    print(f"Shard#{shard_id} could not connect after 4 retries")
+                    return
+
+                if all(retries == 4 for retries in self.shard_connect_failures.values()):
+                    print(paint("All shards lost connection.", "red"))
+                    sys.exit(1)
+
             except Exception as e:
                 print(f"Shard#{shard_id} failed to run: [{paint(type(e).__name__, 'b_red')}]: {e}")
+
             else:
                 print(f"{paint(self.bot_class.__name__, 'cyan')}<{shard_id}>: {result}")
+
             print(f"Attempting resume of shard#{shard_id}")
 
         new_shard = self.bot_class(self, shard_id, *self.args, **self.kwargs)
@@ -312,6 +333,8 @@ class ShareManager:
 
         self.shard_tasks[shard_id] = shard_task
         self.shards[shard_id] = new_shard
+        if shard_id not in self.shard_connect_failures:
+            self.shard_connect_failures[shard_id] = 0
 
     async def __call__(self):
         for shard_id in range(self.shard_count):
@@ -387,6 +410,12 @@ class SnakeBot(commands.Bot):
                     discrim=author.discriminator
                 )
                 session.add(msg_author)
+
+            elif msg_author.name != author.name:
+                msg_author.name = author.name
+
+            elif msg_author.discrim != author.discriminator:
+                msg_author.discrim = author.discriminator
 
             new_message = sql.Message(
                 id=int(message.id),
@@ -515,9 +544,9 @@ class SnakeBot(commands.Bot):
         else:
             return f"```py\n{result}\n```"
 
-    async def upload_to_gist(self, content, filename):
+    async def upload_to_gist(self, content, filename, title="Code result"):
         payload = {
-            "description": "Code result",
+            "description": title,
             "files": {
                 filename: {
                     "content": content
@@ -601,7 +630,7 @@ class SnakeBot(commands.Bot):
     async def post_announcement(self, text):
         failed_servers = 0
         for server in list(self.servers):
-            if not await self.check_blacklist("announcement", server_id=int(server.id)):
+            if not await self.check_blacklist("announce", server_id=int(server.id)):
                 try:
                     await self.send_message(server.default_channel, text)
                 except Exception as e:
@@ -621,13 +650,13 @@ class SnakeBot(commands.Bot):
         return voice_servers, total_servers
 
     async def on_resume(self):
-        print(f"Resumed as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} [{paint(self.user.id, 'b_green')}]")
+        print(f"Resumed as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}]")
         self.resume_time = datetime.now()
         self.resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
         print(f"Resumed after {self.resumed_after}")
 
     async def on_ready(self):
-        print(f"Logged in as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} [{paint(self.user.id, 'b_green')}]")
+        print(f"Logged in as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}]")
         self.start_time = datetime.now()
         self.boot_duration = time.get_elapsed_time(self.boot_time, self.start_time)
         print(f"Loaded in {self.boot_duration}")
@@ -640,7 +669,7 @@ class SnakeBot(commands.Bot):
         elif isinstance(error, commands.CommandOnCooldown):
             await self.send_message(ctx.message.channel, f"{ctx.message.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
 
-        elif isinstance(error, commands.MissingRequiredArgument):
+        elif isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
             await self.send_message(ctx.message.channel, f"\N{WARNING SIGN} {error}")
 
         elif isinstance(error, commands.CommandInvokeError):

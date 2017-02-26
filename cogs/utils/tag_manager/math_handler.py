@@ -115,11 +115,14 @@ class MathParser:
         self.debug = kwargs.get("debug", False)
         self.logger = kwargs.get("logger", None)
 
+        self.log(text)
+
         try:
             self.text = text
             self.expr = ast.parse(text, "<math>", mode="eval").body
         except Exception as e:
-            raise ParseError(str(e)) from e
+            print("errored", e)
+            raise ParseError(str(e) + "test-asd") from e
 
     # Debug log
     def log(self, text):

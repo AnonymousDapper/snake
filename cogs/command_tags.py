@@ -64,6 +64,7 @@ ALLOWED_ATTRIBUTES = [
     "bitrate",
     "user_limit",
     "is_default"
+    # TODO: very important: add attributes per-type and global
 ]
 
 class Tag:
@@ -87,7 +88,9 @@ class TagOverrides(tag_parser.TagFunctions):
         self.debug = kwargs.get("debug", False)
         self.data_cache = {}
 
-    def get(self, key, default=None):
+        setattr(self, "if", self._TagOverrides__compare)
+
+    def get(self, key, default='Does not exist'):
         with self.bot.db_scope() as session:
             tag_dict = session.query(sql.TagVariable).filter_by(tag_name=self.tag.name).first()
 
@@ -95,7 +98,7 @@ class TagOverrides(tag_parser.TagFunctions):
                 tag_dict = sql.TagVariable(tag_name=self.tag.name, data={})
                 session.add(tag_dict)
 
-            return tag_dict.data[key]
+            return tag_dict.data.get(key, default)
 
     def set(self, key, value):
         with self.bot.db_scope() as session:
@@ -121,6 +124,24 @@ class TagOverrides(tag_parser.TagFunctions):
 
     def author(self):
         return self.ctx.message.author
+
+    def self(self):
+        return self.tag
+
+    def channel(self):
+        return self.ctx.message.channel
+
+    def server(self):
+        return self.ctx.message.server
+
+    def __compare(self, condition, result, else_=''):
+        if condition:
+            return result
+        else:
+            return else_
+
+    def eq(self, first, second):
+        return first == second or str(first).lower() == str(second).lower()
 
 class Tags:
     def __init__(self, bot):

@@ -5,6 +5,8 @@ from datetime import datetime
 
 from .utils import checks, time, MultiMention, sql
 
+from .utils.music.downloader import Downloader
+
 class Personal:
     def __init__(self, bot):
         self.bot = bot
@@ -125,6 +127,38 @@ class Personal:
                 result_text = f"```md\n# {obj.__class__.__name__} {str(obj)} is not blacklisted\n```"
 
         await self.bot.say(result_text)
+
+    @commands.command(name="avatar", pass_context=True, brief="change avatar")
+    @checks.is_owner()
+    async def change_avatar(self, ctx, *, file_name:str):
+        file_name = f"./avatars/{file_name.lower().replace(' ', '_')}.jpg"
+
+        try:
+            with open(file_name, 'rb') as f:
+                await self.bot.edit_profile(avatar=f.read())
+        except Exception as e:
+            await self.bot.say(f"\N{WARNING SIGN} Couldn't change profile picture. `{e}`")
+            return
+        else:
+            await self.bot.say("\N{WHITE HEAVY CHECK MARK} Successfully changed profile picture")
+
+    @commands.command(name="music", pass_context=True)
+    @checks.is_owner()
+    async def do_music(self, ctx, *, url:str):
+        author = ctx.message.author
+        voice_channel = author.voice_channel
+
+        if voice_channel is None:
+            return
+
+        print(voice_channel)
+        voice_client = await self.bot.join_voice_channel(voice_channel)
+        print(voice_client)
+        download_client = Downloader()
+        stream_file = await download_client.download(url)
+        print(stream_file)
+        player = voice_client.create_stream_player(stream_file, after=lambda: stream_file.close)
+        player.start()
 
 
 def setup(bot):

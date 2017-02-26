@@ -58,8 +58,8 @@ class Debug:
         try:
             results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql_command)) # run blocking function in a non-blocking way
 
-        except sqlalchemy.exc.ProgrammingError:
-            await self.bot.send_message(ctx.message.channel, f"Unable to process statement. Double check your query:\n```sql\n{sql_command}\n```")
+        except sqlalchemy.exc.ProgrammingError as e:
+            await self.bot.send_message(ctx.message.channel, f"```diff\n- {e.orig.message}\n```\n{e.orig.details.get('hint', 'Unknown fix')}\n\nDouble check your query:\n```sql\n{sql_command}\n```")
             return
 
         except Exception as e:
@@ -72,13 +72,13 @@ class Debug:
         else:
             result_list = results.fetchall()
             row_names = results.keys()
-            clr = lambda arr: ", ".join(repr(item) for item in arr)
-            result = f"```py\n[ {', '.join(row_names)} ]\n--> {len(result_list)} rows <--\n{self.newline.join(clr(arg) for arg in result_list)}\n```" # nasty, horrid messy f-expr
+            clr = lambda arr: ", ".join(str(item) for item in arr)
+            result = f"# Columns: {', '.join(row_names)}\n# {len(result_list)} total rows\n\n{self.newline.join('- ' + clr(arg) for arg in result_list)}" # nasty, horrid messy f-expr
             if len(result) > 1900:
-                gist_result = await self.bot.upload_to_gist(result, 'sql.py')
+                gist_result = await self.bot.upload_to_gist(result, 'sql.md', title="SQL Results")
                 await self.bot.say(f"Output too long. View results at {gist_result}")
             else:
-                await self.bot.say(result)
+                await self.bot.say(f"```md\n{result}\n```")
 
     @commands.command(name="sys", pass_context=True, brief="system terminal")
     @checks.is_owner()
