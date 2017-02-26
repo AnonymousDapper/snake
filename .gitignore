@@ -2,6 +2,7 @@ credentials.json
 config.json
 *.log
 *.txt
+*.pyc
 cogs/__pycache__/
 cogs/__init__.py
 cogs/utils/__pycache__/
