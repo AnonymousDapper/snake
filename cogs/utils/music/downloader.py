@@ -1,24 +1,24 @@
 """ Discord snake music downloader """
-import logging, asyncio, youtube_dl, os
+import asyncio, youtube_dl, os, json
 
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor
 
 ytdl_options = {
     "format": "bestaudio/best",
-    "outtmpl": "%(extractor)s-%(id)s-%(title)s.%(ext)s",
+    "outtmpl": "%(extractor)s-%(id)s.%(ext)s",
     "restrictfilenames": True,
     "noplaylist": True,
     "nocheckcertificate": True,
-    "ignoreerrors": False,
-    "logtostderr": False,
-    "quiet": False,
-    "no_warnings": False,
+    #"ignoreerrors": False,
+    #"logtostderr": False,
+    #"quiet": False,
+    #"no_warnings": False,
     "default_search": "auto",
     "source_address": "0.0.0.0",
 }
 
-youtube_dl.utils.bug_reports_message = lambda: ""
+#youtube_dl.utils.bug_reports_message = lambda: ""
 
 class Downloader:
     def __init__(self, download_folder="youtube_cache"):
@@ -65,16 +65,29 @@ class Downloader:
 
         print(f"Starting download of {url}")
         video_info = await self.extract_info(url, download=False)
-        filename = self.unsafe_ytdl.prepare_filename(video_info)
+
+        with open("info.json", 'w') as f:
+            f.write(json.dumps(video_info, sort_keys=True, indent=2))
+
+        if "_type" in video_info:
+            filename = self.unsafe_ytdl.params["outtmpl"] % video_info.get("entries")[0]
+        else:
+            filename = self.unsafe_ytdl.params["outtmpl"] % video_info
+
         if os.path.basename(filename) in os.listdir(self.download_folder):
             print(f"{url} is cached")
-            return open(filename)
+            return filename
         else:
             return await self._real_download(url)
 
     async def _real_download(self, url):
         video_info = await self.extract_info(url, download=False)
-        filename = self.unsafe_ytdl.prepare_filename(video_info)
-        result = self.unsafe_ytdl.download([url])
+
+        if "_type" in video_info:
+            filename = self.unsafe_ytdl.params["outtmpl"] % video_info.get("entries")[0]
+        else:
+            filename = self.unsafe_ytdl.params["outtmpl"] % video_info
+
+        result = await self.extract_info(url, download=True, extra_info=video_info)
         if result is not None:
-            return open(filename)
+            return filename

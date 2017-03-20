@@ -152,14 +152,17 @@ class Personal:
             return
 
         print(voice_channel)
-        voice_client = await self.bot.join_voice_channel(voice_channel)
+        voice_client = self.bot.voice_client_in(voice_channel.server)
+        if voice_client is None:
+            voice_client = await self.bot.join_voice_channel(voice_channel)
+
         print(voice_client)
         download_client = Downloader()
-        stream_file = await download_client.download(url)
-        print(stream_file)
-        player = voice_client.create_stream_player(stream_file, after=lambda: stream_file.close)
+        stream_filename = await download_client.download(url)
+        print(stream_filename)
+        player = voice_client.create_ffmpeg_player(stream_filename, before_options="-nostdin", options="-vn -b:a 128k", after=lambda: print(f"Done playing {url}"))
+        player.volume = 0.6
         player.start()
-
 
 def setup(bot):
     bot.add_cog(Personal(bot))

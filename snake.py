@@ -50,8 +50,6 @@ else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     print("Using uvloop")
 
-discord_logger = logging.getLogger("discord")
-discord_logger.setLevel(logging.INFO)
 
 # weird fix for single-process sharding issue
 # maybe when rewrite is stable we can stop using this
@@ -158,6 +156,12 @@ class ShareManager:
             "command_has_no_subcommands": self.command_has_no_subcommands,
             "shard_count": self.shard_count
         })
+
+        self.log = logging.getLogger()
+        self.log.setLevel(logging.DEBUG)
+        self.log.addHandler(
+            logging.FileHandler(filename="snake.log", encoding="utf-8", mode='w')
+        )
 
     def set_shard_count(self, shard_count):
         self.shard_count = shard_count
@@ -288,7 +292,9 @@ class ShareManager:
             print(f"Closing {paint(self.bot_class.__name__, 'cyan')}<{shard_id}>")
             self.shard_tasks[shard_id].cancel()
             await shard.logout()
+            shard.loop.stop()
         print(f"Closed {shard_id + 1} shards, exiting..")
+        self.loop.stop()
         sys.exit(0)
 
     def start_shard(self, shard_id, future=None):
@@ -352,6 +358,15 @@ class ShareManager:
 
 
 class SnakeBot(commands.Bot):
+    def log_socket(self, data, send=False):
+        if isinstance(data, str):
+            json_data = json.loads(data)
+            op_type = json_data.get("t")
+            if op_type is not None:
+                if op_type.lower() == "voice_state_update":
+                    if json_data["d"]["guild_id"] == "180133909923758080":
+                        print(f"[Shard {self.shard_id}] client {paint('>>' if send else '<<', 'green')} server {paint(op_type.upper(), 'blue')} -> {json_data}")
+
     @contextmanager
     def db_scope(self): # context manager for database sessions
         session = self.db.Session()
@@ -387,12 +402,6 @@ class SnakeBot(commands.Bot):
         self.aio_session = aiohttp.ClientSession()
         self.db = sql.SQL(db_username=os.getenv("SNAKE_DB_USERNAME"), db_password=os.getenv("SNAKE_DB_PASSWORD"), db_name=os.getenv("SNAKE_DB_NAME"))
         self.boot_time = datetime.now()
-
-        self.log = logging.getLogger()
-        self.log.setLevel(logging.INFO)
-        self.log.addHandler(
-            logging.FileHandler(filename="snake.log", encoding="utf-8", mode='w')
-        )
 
     async def log_message(self, message, action): # log the messages
         author = message.author
@@ -584,7 +593,7 @@ class SnakeBot(commands.Bot):
                 success = True
                 return chat_result
             else:
-                self.log.warning(f"Could not fetch chat response. Retrying.. [{chat_result}]")
+                self.shared.log.warning(f"Could not fetch chat response. Retrying.. [{chat_result}]")
 
     async def update_servers(self):
         server_count = len(self.shared.servers)
@@ -605,11 +614,11 @@ class SnakeBot(commands.Bot):
 
         async with self.aio_session.post(f"https://bots.discord.pw/api/bots/{self.user.id}/stats", headers=bots_headers, data=bots_data) as response:
             if response.status != 200:
-                self.log.error(f"Could not post to bots.discord.pw ({response.status}")
+                self.shared.log.error(f"Could not post to bots.discord.pw ({response.status}")
 
         async with self.aio_session.post("https://www.carbonitex.net/discord/data/botdata.php", data=carbon_data) as response:
             if response.status != 200:
-                self.log.error(f"Could not post to carbonitex.net ({response.status})")
+                self.shared.log.error(f"Could not post to carbonitex.net ({response.status})")
 
     async def post_server_update(self, text):
         channel = self.get_channel("234512725554888705")
@@ -650,13 +659,13 @@ class SnakeBot(commands.Bot):
         return voice_servers, total_servers
 
     async def on_resume(self):
-        print(f"Resumed as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}]")
+        print(f"Resumed as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}] {paint('DEBUG MODE', 'b_cyan') if self._DEBUG else ''}")
         self.resume_time = datetime.now()
         self.resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
         print(f"Resumed after {self.resumed_after}")
 
     async def on_ready(self):
-        print(f"Logged in as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}]")
+        print(f"Logged in as {paint(self.user.name, 'blue')}#{paint(self.user.discriminator, 'yellow')} Shard #{paint(self.shard_id, 'magenta')} [{paint(self.user.id, 'b_green')}] {paint('DEBUG MODE', 'b_cyan') if self._DEBUG else ''}")
         self.start_time = datetime.now()
         self.boot_duration = time.get_elapsed_time(self.boot_time, self.start_time)
         print(f"Loaded in {self.boot_duration}")
@@ -664,8 +673,10 @@ class SnakeBot(commands.Bot):
     async def on_command_error(self, error, ctx):
         if isinstance(error, commands.NoPrivateMessage):
             await self.send_message(ctx.message.author, "\N{WARNING SIGN} Sorry, you can't use this command in a private message!")
+
         elif isinstance(error, commands.DisabledCommand):
             await self.send_message(ctx.message.author, "\N{WARNING SIGN} Sorry, this command is disabled!")
+
         elif isinstance(error, commands.CommandOnCooldown):
             await self.send_message(ctx.message.channel, f"{ctx.message.author.mention} slow down! Try again in {error.retry_after:.1f} seconds.")
 
@@ -677,6 +688,7 @@ class SnakeBot(commands.Bot):
             print(f"In {paint(ctx.command.qualified_name, 'b_red')}:")
             traceback.print_tb(error.original.__traceback__)
             print(f"{paint(original_name, 'red')}: {error.original}")
+
         else:
             print(f"{paint(type(error).__name__, 'b_red')}: {error}")
 
@@ -687,7 +699,7 @@ class SnakeBot(commands.Bot):
             destination = "Private Message"
         else:
             destination = f"[{message.server.name} #{message.channel.name}]"
-        self.log.info(f"SHARD#{self.shard_id} {destination}: {message.author.name}: {message.clean_content}")
+        self.shared.log.info(f"SHARD#{self.shard_id} {destination}: {message.author.name}: {message.clean_content}")
         await self.log_command_use(ctx.command.qualified_name) # log that this command was used
 
     async def on_message(self, message):
@@ -738,6 +750,11 @@ class SnakeBot(commands.Bot):
         await self.shared.post_server_update(f"Left **{server.name}** [{server.id}] (owned by **{server.owner.display_name}**#**{server.owner.discriminator}** [{server.owner.id}]) ({len(self.shared.servers)} total servers)")
         await self.update_servers()
 
+    async def on_socket_raw_receive(self, payload):
+        self.log_socket(payload)
+
+    async def on_socket_raw_send(self, payload):
+        self.log_socket(payload, send=True)
 
 share_manager = ShareManager(SnakeBot)
 
