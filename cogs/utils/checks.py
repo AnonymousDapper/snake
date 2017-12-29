@@ -17,6 +17,7 @@ def check_custom_permissions(ctx, **perms):
 
     author = ctx.message.author
     permissions = ctx.bot.permissions(author)
+    print(permissions)
     return all(getattr(permissions, perm_name) == perm_value for perm_name, perm_value in perms.items())
 
 def permissions(**perms):

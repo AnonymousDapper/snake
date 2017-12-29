@@ -1,11 +1,13 @@
 credentials.json
-config.json
 *.log
 *.txt
 *.pyc
-cogs/__pycache__/
+cogs/__pycache__
 cogs/__init__.py
-cogs/utils/__pycache__/
-cogs/utils/tag_manager/__pycache__/
+cogs/utils/__pycache__
+cogs/utils/tag_manager/__pycache__
+cogs/utils/music/__pycache__
 avatars/
 youtube_cache/
+playlist_cache/
+snake.db

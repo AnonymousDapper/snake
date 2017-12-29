@@ -2,11 +2,12 @@ from discord.ext import commands
 from .utils import sql
 from .utils.tag_manager import parser as tag_parser
 
+import json
+
 ALLOWED_ATTRIBUTES = [
     # Object
     "id",
     "created_at",
-    "timestamp",
     # User
     "name",
     "discriminator",
@@ -18,7 +19,7 @@ ALLOWED_ATTRIBUTES = [
     "mention",
     "display_name",
     # Message
-    "edited_timestamp",
+    "edited_at",
     "tts",
     "content",
     "mention_everyone",
@@ -36,8 +37,7 @@ ALLOWED_ATTRIBUTES = [
     "description",
     "url",
     "color",
-    "colour",
-    # Server
+    # Guild
     "name",
     "afk_timeout",
     "region",
@@ -95,19 +95,23 @@ class TagOverrides(tag_parser.TagFunctions):
             tag_dict = session.query(sql.TagVariable).filter_by(tag_name=self.tag.name).first()
 
             if tag_dict is None:
-                tag_dict = sql.TagVariable(tag_name=self.tag.name, data={})
+                tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
                 session.add(tag_dict)
 
-            return tag_dict.data.get(key, default)
+            temp_data = json.loads(tag_dict.data)
+            return temp_data.get(key, default)
 
     def set(self, key, value):
         with self.bot.db_scope() as session:
             tag_dict = session.query(sql.TagVariable).filter_by(tag_name=self.tag.name).first()
             if tag_dict is None:
-                tag_dict = sql.TagVariable(tag_name=self.tag.name, data={})
+                tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
                 session.add(tag_dict)
 
-            tag_dict.data[key] = value
+            temp_data = json.loads(tag_dict.data)
+            temp_data[key] = value
+            tag_dict.data = json.dumps(temp_data)
+
             self.bot.db.flag(tag_dict, "data") # force it to re-commit
 
     def fetch(self, key):
@@ -123,16 +127,16 @@ class TagOverrides(tag_parser.TagFunctions):
             return getattr(obj, key)
 
     def author(self):
-        return self.ctx.message.author
+        return self.ctx.author
 
     def self(self):
         return self.tag
 
     def channel(self):
-        return self.ctx.message.channel
+        return self.ctx.channel
 
-    def server(self):
-        return self.ctx.message.server
+    def guild(self):
+        return self.ctx.guild
 
     def __compare(self, condition, result, else_=''):
         if condition:
@@ -167,11 +171,11 @@ class Tags:
             parser = tag_parser.Parser(text, debug=self.bot._DEBUG, override=TagOverrides(self.bot, ctx, tag, debug=self.bot._DEBUG))
             result = await parser()
         except Exception as e:
-            await self.bot.say(f"```diff\n- [{type(e).__name__}]: {e}\n```")
+            await ctx.send(f"```diff\n- [{type(e).__name__}]: {e}\n```")
             return
 
         result = str(result)
-        await self.bot.say(f"\* {tag.name} is empty \*" if result == "" else result)
+        await ctx.send(f"\* {tag.name} is empty \*" if result == "" else result)
 
 def setup(bot):
     bot.add_cog(Tags(bot))

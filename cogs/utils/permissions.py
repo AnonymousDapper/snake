@@ -40,6 +40,8 @@ Permissions system is as follows..
 +-----------+-----------------+
 | 0x0F      | Emoji command   |
 +-----------+-----------------+
+| 0x10      | Change prefix   |
++-----------+-----------------+
 
 """
 
@@ -58,9 +60,10 @@ VIEW_QUEUE   = 1 << 0x0C
 MANAGE_TAG   = 1 << 0x0D
 VIEW_TAG     = 1 << 0x0E
 EMOJI        = 1 << 0x0F
+CHANGE_PFX   = 1 << 0x10
 
 DEFAULT = CHAT | XKCD | RETRO | QUEUE_MUSIC | QUEUE_STREAM | EDIT_QUEUE | SKIP_SONG | ADJ_VOL | PR_MUSIC \
-    | VOICE_CHAN | PS_MUSIC | VIEW_QUEUE | MANAGE_TAG | VIEW_TAG | EMOJI # default permissions includes all
+    | VOICE_CHAN | PS_MUSIC | VIEW_QUEUE | MANAGE_TAG | VIEW_TAG | EMOJI # default permissions includes all but change prefix
 
 class Permissions:
     bot = None
@@ -226,11 +229,11 @@ class Permissions:
         self._set(0x0A, value)
 
     @property
-    def stop_music(self):
+    def play_music(self):
         return self._bit(0x0B)
 
-    @stop_music.setter
-    def stop_music(self, value):
+    @play_music.setter
+    def play_music(self, value):
         self._set(0x0B, value)
 
     @property
@@ -264,3 +267,11 @@ class Permissions:
     @use_emoji.setter
     def use_emoji(self, value):
         self._set(0x0F, value)
+
+    @property
+    def change_pfx(self):
+        return self._bit(0x10)
+
+    @change_pfx.setter
+    def change_pfx(self, value):
+        self._set(0x10, value)

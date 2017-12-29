@@ -5,58 +5,47 @@ from datetime import datetime
 
 from .utils import checks, time, MultiMention, sql
 
-from .utils.music.downloader import Downloader
+from .utils.music.api import SpotifyAPI, YoutubeAPI
+from .utils.music.player import FFmpegStreamSource
 
 class Personal:
     def __init__(self, bot):
         self.bot = bot
 
-    @commands.command(name="getinvite", aliases=["ginvite"], pass_context=True, brief="get an invite")
+    @commands.command(name="getinvite", aliases=["ginvite"], brief="get an invite")
     @checks.is_owner()
-    async def get_invite(self, ctx, *, server_name: str):
-        server = discord.utils.get(self.bot.shared.servers, name=server_name)
+    async def get_invite(self, ctx, *, guild_name: str):
+        guild = discord.utils.get(self.bot.guilds, name=guild_name)
 
-        print(server)
-        if server is None:
-            await self.bot.whisper("\N{WARNING SIGN} That server can't be found")
+        print(guild)
+        if guild is None:
+            await ctx.author.send("\N{WARNING SIGN} That guild can't be found")
         else:
-            invite = await self.bot.create_invite(server, max_uses=1)
-            await self.bot.whisper(f"Invite for **{server.name}**: {invite.url}")
+            invite = await self.bot.create_invite(guild, max_uses=1)
+            await ctx.author.send(f"Invite for **{guild.name}**: {invite.url}")
 
-    @commands.command(name="announce", pass_context=True, brief="broadcast a message")
+    @commands.command(name="invite", brief="get invite link for bot")
     @checks.is_owner()
-    async def announce(self, ctx, *, message:str):
-        author = ctx.message.author
-        start_time = datetime.now()
-        results = await self.bot.shared.global_announce(f"Announcement from **{author.name}** (Owner):\n{message}")
-        result_text = f"Finished in {time.get_ping_time(start_time, datetime.now())}\n```md\n"
-        result_text += "\n".join(f"- Shard {shard_id} -> {r[0]}/{r[1]} servers ({(100 * (r[0] / r[1])):.0f}%)\n" for shard_id, r in results.items())
-        total = (sum(r[0] for s, r in results.items()), sum(r[1] for s, r in results.items()))
-        result_text += f"\n\n## Total -> {total[0]}/{total[1]} ({(100 * (total[0] / total[1])):.0f}%)\n```"
+    async def get_bot_invite(self, ctx):
+        await ctx.send(f"Invite link for snake: <{self.bot.invite_url}>")
 
-        await self.bot.say(result_text)
-
-    @commands.command(name="voice", pass_context=True, brief="check voice status")
+    @commands.command(name="voice", brief="check voice status")
     @checks.is_owner()
     async def check_voice(self, ctx):
-        results = await self.bot.shared.get_voice_status()
-        result_text = "```md\n"
-        result_text += "\n".join(f"- Shard {shard_id} -> {r[0]}/{r[1]} servers ({(100 * (r[0] / r[1])):.0f}%)\n" for shard_id, r in results.items())
-        total = (sum(r[0] for s, r in results.items()), sum(r[1] for s, r in results.items()))
-        result_text += f"\n\n## Total -> {total[0]}/{total[1]} ({(100 * (total[0] / total[1])):.0f}%)\n```"
+        total_guilds = len(self.bot.guilds)
+        total_voice_guilds = sum(1 for guild in self.bot.guilds if guild.voice_client is not None)
+        await ctx.send(f"{total_voice_guilds} of {total_guilds} guilds ({(100 * (total_voice_guilds / total_guilds)):.0f}%) using voice")
 
-        await self.bot.say(result_text)
-
-    @commands.group(name="blacklist", pass_context=True, brief="manage blacklist", no_pm=True, invoke_without_command=True)
+    @commands.group(name="blacklist", brief="manage blacklist", no_pm=True, invoke_without_command=True)
     @checks.is_owner()
     async def blacklist_group(self, ctx, *, obj:MultiMention):
         print("blacklist")
 
-    @blacklist_group.command(name="add", pass_context=True, brief="add to blacklist", no_pm=True)
+    @blacklist_group.command(name="add", brief="add to blacklist", no_pm=True)
     @checks.is_owner()
     async def blacklist_add(self, ctx, value:str, *, obj:MultiMention):
-        if isinstance(obj, discord.Server):
-            kwargs = dict(server_id=int(obj.id))
+        if isinstance(obj, discord.guild):
+            kwargs = dict(guild_id=int(obj.id))
 
         elif isinstance(obj, discord.Channel):
             kwargs = dict(channel_id=int(obj.id))
@@ -71,18 +60,18 @@ class Personal:
         with self.bot.db_scope() as session:
             blacklist_obj = session.query(sql.Blacklist).filter_by(**kwargs, data=value).first()
             if blacklist_obj is not None:
-                await self.bot.say(f"{obj.__class__.__name__} **{str(obj)}** has already been blacklisted for `{value}`")
+                await ctx.send(f"{obj.__class__.__name__} **{str(obj)}** has already been blacklisted for `{value}`")
                 return
             else:
                 blacklist_obj = sql.Blacklist(**kwargs, data=value)
                 session.add(blacklist_obj)
-                await self.bot.say(f"Blacklisted {obj.__class__.__name__} **{str(obj)}** for `{value}`")
+                await ctx.send(f"Blacklisted {obj.__class__.__name__} **{str(obj)}** for `{value}`")
 
-    @blacklist_group.command(name="remove", pass_context=True, brief="remove from blacklist", no_pm=True)
+    @blacklist_group.command(name="remove", brief="remove from blacklist", no_pm=True)
     @checks.is_owner()
     async def blacklist_remove(self, ctx, value:str, *, obj:MultiMention):
-        if isinstance(obj, discord.Server):
-            kwargs = dict(server_id=int(obj.id))
+        if isinstance(obj, discord.guild):
+            kwargs = dict(guild_id=int(obj.id))
 
         elif isinstance(obj, discord.Channel):
             kwargs = dict(channel_id=int(obj.id))
@@ -97,19 +86,19 @@ class Personal:
         with self.bot.db_scope() as session:
             blacklist_obj = session.query(sql.Blacklist).filter_by(**kwargs, data=value).first()
             if blacklist_obj is None:
-                await self.bot.say(f"{obj.__class__.__name__} **{str(obj)}** is not blacklisted for `{value}`")
+                await ctx.send(f"{obj.__class__.__name__} **{str(obj)}** is not blacklisted for `{value}`")
                 return
             else:
                 session.delete(blacklist_obj)
-                await self.bot.say(f"Removed {obj.__class__.__name__} **{str(obj)}** from blacklist for `{value}`")
+                await ctx.send(f"Removed {obj.__class__.__name__} **{str(obj)}** from blacklist for `{value}`")
 
-    @blacklist_group.command(name="check", pass_context=True, brief="search blacklist", no_pm=True)
+    @blacklist_group.command(name="check", brief="search blacklist", no_pm=True)
     @checks.is_owner()
     async def blacklist_search(self, ctx, *, obj:MultiMention):
-        if isinstance(obj, discord.Server):
-            kwargs = dict(server_id=int(obj.id))
+        if isinstance(obj, discord.Guild):
+            kwargs = dict(guild_id=int(obj.id))
 
-        elif isinstance(obj, discord.Channel):
+        elif isinstance(obj, discord.TextChannel):
             kwargs = dict(channel_id=int(obj.id))
 
         elif isinstance(obj, discord.Role):
@@ -121,48 +110,127 @@ class Personal:
         with self.bot.db_scope() as session:
             blacklist_objs = session.query(sql.Blacklist).filter_by(**kwargs).all()
 
+            obj_name = "Channel" if obj.__class__.__name__ == "TextChannel" else obj.__class__.__name__
             if len(blacklist_objs) > 0:
-                result_text = f"```md\n# {obj.__class__.__name__} {str(obj)} is blacklisted for\n" + "\n".join(f"- {b_obj.data}" for b_obj in blacklist_objs) + "\n```"
+                result_text = f"```md\n# {obj_name} {str(obj)} is blacklisted for\n" + "\n".join(f"- {b_obj.data}" for b_obj in blacklist_objs) + "\n```"
             else:
-                result_text = f"```md\n# {obj.__class__.__name__} {str(obj)} is not blacklisted\n```"
+                result_text = f"```md\n# {obj_name} {str(obj)} is not blacklisted\n```"
 
-        await self.bot.say(result_text)
+        await ctx.send(result_text)
 
-    @commands.command(name="avatar", pass_context=True, brief="change avatar")
+    @commands.command(name="avatar", brief="change avatar")
     @checks.is_owner()
     async def change_avatar(self, ctx, *, file_name:str):
         file_name = f"./avatars/{file_name.lower().replace(' ', '_')}.jpg"
 
         try:
             with open(file_name, 'rb') as f:
-                await self.bot.edit_profile(avatar=f.read())
+                await self.bot.user.edit(avatar=f.read())
         except Exception as e:
-            await self.bot.say(f"\N{WARNING SIGN} Couldn't change profile picture. `{e}`")
+            await ctx.send(f"\N{WARNING SIGN} Couldn't change profile picture. `{e}`")
             return
         else:
-            await self.bot.say("\N{WHITE HEAVY CHECK MARK} Successfully changed profile picture")
+            await ctx.send("\N{WHITE HEAVY CHECK MARK} Successfully changed profile picture")
 
-    @commands.command(name="music", pass_context=True)
-    @checks.is_owner()
-    async def do_music(self, ctx, *, url:str):
-        author = ctx.message.author
-        voice_channel = author.voice_channel
+    # @commands.command(name="spotify")
+    # @checks.is_owner()
+    # async def get_spotify(self, ctx, *, url:str):
+    #     d_1 = datetime.now()
+    #     playlist = await self.spotify_api.get_playlist(url)
 
-        if voice_channel is None:
-            return
+    #     await playlist.load_tracks()
 
-        print(voice_channel)
-        voice_client = self.bot.voice_client_in(voice_channel.server)
-        if voice_client is None:
-            voice_client = await self.bot.join_voice_channel(voice_channel)
+    #     await ctx.send(f"Found `{str(playlist)}` in {time.get_ping_time(d_1, datetime.now())}.. loading tracks")
 
-        print(voice_client)
-        download_client = Downloader()
-        stream_filename = await download_client.download(url)
-        print(stream_filename)
-        player = voice_client.create_ffmpeg_player(stream_filename, before_options="-nostdin", options="-vn -b:a 128k", after=lambda: print(f"Done playing {url}"))
-        player.volume = 0.6
-        player.start()
+    #     d_1 = datetime.now()
+
+    #     youtube_list = playlist.to_youtube_playlist(self.bot.youtube_api)
+
+    #     failed = await youtube_list.load_tracks()
+
+    #     await ctx.send(f"Loaded tracks from `{str(youtube_list)}` in {time.get_ping_time(d_1, datetime.now())}")
+
+    #     if failed:
+    #         await ctx.send(f"Missed {len(failed)} tracks:\n{str(failed)}")
+
+
+    # @commands.command(name="youtube")
+    # @checks.is_owner()
+    # async def get_youtube(self, ctx, *, term:str):
+    #     d_1 = datetime.now()
+
+    #     query_type, info = self.youtube_api.determine_query_type(term)
+
+    #     if query_type == "search":
+
+    #         videos = await self.youtube_api.search_videos(info)
+
+    #         print(videos)
+
+    #         await ctx.send(f"Selecting {videos[0]['title']} ({videos[0]['id']} uploaded by {videos[0]['channel']}")
+
+    #         top_video = await self.youtube_api.get_video_from_id(videos[0]["id"])
+
+    #         await ctx.send(f"Found `{str(top_video)}` in {time.get_ping_time(d_1, datetime.now())}")
+
+    #     elif query_type == "video":
+    #         d_1 = datetime.now()
+
+    #         video = await self.youtube_api.get_video_from_id(info)
+
+    #         await ctx.send(f"Found `{str(video)}` in {time.get_ping_time(d_1, datetime.now())}")
+
+    #     else:
+
+    #         await ctx.send("That's a playlist")
+
+    # @commands.command(name="play")
+    # @checks.is_owner()
+    # async def play_song(self, ctx, *, search_term):
+    #     d_1 = datetime.now()
+
+    #     query_type, data = self.youtube_api.determine_query_type(search_term)
+
+    #     term = search_term
+
+    #     if query_type == "search":
+    #         videos = await self.youtube_api.search_videos(data)
+
+    #         term = videos[0]["id"]
+
+    #     elif query_type == "video":
+    #         term = data
+
+    #     else:
+    #         await ctx.send("That's a playlist")
+
+    #         return
+
+    #     video = await self.youtube_api.get_video_from_id(term)
+
+    #     author = ctx.message.author
+    #     voice_channel = author.voice.channel
+
+    #     if voice_channel is None:
+    #         return
+
+    #     print(voice_channel)
+    #     voice_client = author.guild.voice_client
+    #     if voice_client is None:
+    #         voice_client = await voice_channel.connect()
+
+    #     print(video)
+    #     voice_player = FFmpegStreamSource(video)
+
+    #     voice_client.play(voice_player, after=lambda: print(f"Done playing {str(video)}"))
 
 def setup(bot):
     bot.add_cog(Personal(bot))
+
+# https://developers.google.com/youtube/v3/docs/search
+# https://developers.google.com/youtube/v3/getting-started
+# https://developer.spotify.com/web-api/get-playlists-tracks/
+# https://developer.spotify.com/web-api/tutorial/
+# random.shuffle
+# https://api.spotify.com/v1/users/jreasley/playlists/20fpBL4vkmGmcEMJhCoNah/tracks?fields=items(track(name,artists(name),album(name))),total,limit
+# ffmpeg -i - -f s16le -ar 48000 -ac 2 -loglevel verbose -vn -b:a 128k
