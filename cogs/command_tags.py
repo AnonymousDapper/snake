@@ -98,8 +98,7 @@ class TagOverrides(tag_parser.TagFunctions):
                 tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
                 session.add(tag_dict)
 
-            temp_data = json.loads(tag_dict.data)
-            return temp_data.get(key, default)
+            return tag_dict.data[key]
 
     def set(self, key, value):
         with self.bot.db_scope() as session:
@@ -108,9 +107,7 @@ class TagOverrides(tag_parser.TagFunctions):
                 tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
                 session.add(tag_dict)
 
-            temp_data = json.loads(tag_dict.data)
-            temp_data[key] = value
-            tag_dict.data = json.dumps(temp_data)
+            tag_dict.data[key] = value
 
             self.bot.db.flag(tag_dict, "data") # force it to re-commit
 

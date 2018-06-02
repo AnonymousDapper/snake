@@ -8,7 +8,7 @@ CHANNEL_ID = re.compile(r"^<#(?P<id>[0-9]{,23})>$")
 MEMBER_ID = re.compile(r"^<@!?(?P<id>[0-9]{,23})>$")
 
 class MultiMention(commands.Converter):
-    async def convert(self, ctx, argument): # its never going to be a private channel
+    async def convert(self, ctx, argument): # it's never going to be a private channel
         message = ctx.message
         channel = message.channel
         guild = channel.guild

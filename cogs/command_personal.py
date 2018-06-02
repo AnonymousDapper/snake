@@ -44,10 +44,10 @@ class Personal:
     @blacklist_group.command(name="add", brief="add to blacklist", no_pm=True)
     @checks.is_owner()
     async def blacklist_add(self, ctx, value:str, *, obj:MultiMention):
-        if isinstance(obj, discord.guild):
+        if isinstance(obj, discord.Guild):
             kwargs = dict(guild_id=int(obj.id))
 
-        elif isinstance(obj, discord.Channel):
+        elif isinstance(obj, discord.TextChannel):
             kwargs = dict(channel_id=int(obj.id))
 
         elif isinstance(obj, discord.Role):
@@ -70,10 +70,10 @@ class Personal:
     @blacklist_group.command(name="remove", brief="remove from blacklist", no_pm=True)
     @checks.is_owner()
     async def blacklist_remove(self, ctx, value:str, *, obj:MultiMention):
-        if isinstance(obj, discord.guild):
+        if isinstance(obj, discord.Guild):
             kwargs = dict(guild_id=int(obj.id))
 
-        elif isinstance(obj, discord.Channel):
+        elif isinstance(obj, discord.TextChannel):
             kwargs = dict(channel_id=int(obj.id))
 
         elif isinstance(obj, discord.Role):

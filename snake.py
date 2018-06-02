@@ -195,7 +195,7 @@ class SnakeBot(commands.Bot):
         )
 
         self.aio_session = aiohttp.ClientSession()
-        self.db = sql.SQL(db_name="snake")
+        self.db = sql.SQL(db_name="snake", db_username=os.environ.get("SNAKE_DB_USERNAME"), db_password=os.environ.get("SNAKE_DB_PASSWORD"))
         self.boot_time = datetime.now()
 
         for filename in os.listdir("cogs"):
