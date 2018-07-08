@@ -354,21 +354,29 @@ class SnakeBot(commands.Bot):
             return f"```py\n{result}\n```"
 
     async def upload_to_gist(self, content, filename, title="Command Result"):
-        payload = {
-            "description": title,
-            "files": {
-                filename: {
-                    "content": content
-                }
-            }
-        }
+        # payload = {
+        #     "description": title,
+        #     "files": {
+        #         filename: {
+        #             "content": content
+        #         }
+        #     }
 
-        async with self.aio_session.post("https://api.github.com/gists", data=json.dumps(payload), headers={"Content-Type": "application/json"}) as response:
-            if response.status != 201:
+
+        # async with self.aio_session.post("https://api.github.com/gists", data=json.dumps(payload), headers={"Content-Type": "application/json"}) as response:
+        #     if response.status != 201:
+        #         return f"Could not upload: {response.status}"
+        #     else:
+        #         data = await response.json()
+        #         return data["html_url"]
+
+        async with self.aio_session.post("http://thinking-rock.a-sketchy.site:8000/documents", data=content, headers={"Content-Type": "application/json"}) as response:
+            if response.status != 200:
                 return f"Could not upload: {response.status}"
+
             else:
                 data = await response.json()
-                return data["html_url"]
+                return f"http://thinking-rock.a-sketchy.site:8000/{data['key']}"
 
     async def post_reaction(self, message, emoji=None, **kwargs):
         reaction_emoji = ""
@@ -392,7 +400,6 @@ class SnakeBot(commands.Bot):
         except Exception as e:
             traceback.print_exc(e)
             await message.channel.send(reaction_emoji)
-
 
     async def on_ready(self):
         self.start_time = datetime.now()

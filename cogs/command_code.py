@@ -41,7 +41,7 @@ class Debug:
             results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql_command)) # run blocking function in a non-blocking way
 
         except sqlalchemy.exc.ProgrammingError as e:
-            await self.bot.send_message(ctx.channel, f"```diff\n- {e.orig.message}\n```\n{e.orig.details.get('hint', 'Unknown fix')}\n\nDouble check your query:\n```sql\n{sql_command}\n```")
+            await ctx.send(f"```diff\n- {e.orig.message}\n```\n{e.orig.details.get('hint', 'Unknown fix')}\n\nDouble check your query:\n```sql\n{sql_command}\n```")
             return
 
         except Exception as e:
