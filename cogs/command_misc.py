@@ -12,6 +12,8 @@ from urllib.parse import quote_plus
 from discord.ext import commands
 from .utils import checks, time
 
+from cogs.utils.tag_manager import math_handler
+
 class Misc:
     def __init__(self, bot):
         self.bot = bot
@@ -89,60 +91,15 @@ class Misc:
             emojis = await response.json()
             await ctx.send(" ".join(e["text"] for e in emojis["results"]))
 
-    @commands.group(name="role", brief="manage roles", no_pm=True, invoke_without_command=False)
-    async def role_group(self, ctx):
-        print("Role")
+    @commands.command(name="calc", brief="do math")
+    async def run_calc(self, ctx, *, expr:str):
+        parser = math_handler.MathParser(expr, debug=self.bot._DEBUG)
+        try:
+            result = parser()
+        except Exception as e:
+            result = f"[{e.__class__.__name__}]: {e}"
 
-    @role_group.command(name="get", brief="assign yourself a role", no_pm=True)
-    async def get_role(self, ctx, *, role_name:str):
-        if ctx.guild.id == 224187988593213442:
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-
-            if role is not None:
-                try:
-                    await ctx.author.add_roles(role, reason="bot command", atomic=True)
-                    await self.bot.post_reaction(ctx.message, success=True)
-
-                except Exception as e:
-                    traceback.print_exc()
-                    await self.bot.post_reaction(ctx.message, failure=True)
-
-    @role_group.command(name="remove", brief="remove an assigned role from yourself", no_pm=True)
-    async def remove_role(self, ctx, *, role_name:str):
-        if ctx.guild.id == 224187988593213442:
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-
-            if role is not None:
-                try:
-                    await ctx.author.remove_roles([role.id], reason="bot command", atomic=True)
-                    await self.bot.post_reaction(ctx.message, success=True)
-
-                except Exception as e:
-                    traceback.print_exc()
-                    await self.bot.post_reaction(ctx.message, failure=True)
-
-            else:
-                await ctx.send(f"Role '{role_name}' could not be found")
-
-    @role_group.command(name="post", brief="post an update for a role", no_pm=True)
-    @checks.is_owner()
-    async def role_post(self, ctx, role_name, *, text):
-        if ctx.guild.id == 224187988593213442:
-            role = discord.utils.get(ctx.guild.roles, name=role_name)
-
-            if role is not None:
-                try:
-                    await role.edit(mentionable=True)
-                    await ctx.send(f"{role.mention} {text}")
-                    await role.edit(mentionable=False)
-                    await ctx.message.delete()
-
-                except Exception as e:
-                    traceback.print_exc()
-                    await self.bot.post_reaction(ctx.message, failure=True)
-
-            else:
-                await ctx.send(f"Role '{role_name}' could not be found")
+        await ctx.send(result)
 
 def setup(bot):
     bot.add_cog(Misc(bot))

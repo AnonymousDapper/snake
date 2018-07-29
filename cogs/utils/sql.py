@@ -128,7 +128,7 @@ class SQL:
         self.db_name = kwargs.get("db_name")
         self.db_username = kwargs.get("db_username")
         self.db_password = kwargs.get("db_password")
-        self.db_api = kwargs.get("db_api", "psycopg2cffi")
+        self.db_api = kwargs.get("db_api", "pypostgresql")
         self.engine = create_engine(f"postgresql+{self.db_api}://{self.db_username}:{self.db_password}@localhost:5432/{self.db_name}", echo=False)
         self.Session = sessionmaker(bind=self.engine)
 
