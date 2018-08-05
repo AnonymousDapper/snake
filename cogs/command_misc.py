@@ -9,7 +9,7 @@ from datetime import datetime
 from random import choice
 from io import BytesIO
 from PIL import Image, ImageColor
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, quote
 
 from discord.ext import commands
 from .utils import checks, time
@@ -174,7 +174,7 @@ class Misc:
 
     @commands.command(name="structure", brief="skeletal structure", aliases=["avogadrio"])
     async def skeletal_structure(self, ctx, *, chem_name:str):
-        safe_name = quote_plus(chem_name.title())
+        safe_name = quote(chem_name.title())
 
         async with self.bot.aio_session.get(f"https://avogadr.io/api/name/exists/{chem_name}") as response:
 

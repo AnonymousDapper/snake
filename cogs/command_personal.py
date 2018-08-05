@@ -132,6 +132,36 @@ class Personal:
         else:
             await ctx.send("\N{WHITE HEAVY CHECK MARK} Successfully changed profile picture")
 
+    @commands.command(name="socket", brief="view socket log")
+    @checks.is_owner()
+    async def view_socket_log(self, ctx, *, event_name : str = None):
+        result_embed = discord.Embed()
+
+        if not self.bot._DEBUG:
+            result_embed.color = 0xFF6D00
+            result_embed.add_field(name="Err..", value="Debug mode is not enabled")
+
+        else:
+            if event_name is not None:
+                name = (event_name.replace(" ", "_")).upper()
+
+                if name in self.bot.socket_log:
+                    result_embed.color = 0xF57C00
+                    result_embed.add_field(name=f"`{name}`", value=self.bot.socket_log[name])
+
+                else:
+                    result_embed.color = 0xB71C1C
+                    result_embed.add_field(name="Whoops!", value=f"Event `{name}` not found")
+
+            else:
+                count = 0
+                result_embed.color = 0x00C853
+                for t_type in self.bot.socket_log:
+                    result_embed.add_field(name=f"`{t_type}`", value=self.bot.socket_log[t_type], inline=(count % 2 == 1))
+                    count += 1
+
+        await ctx.send(embed=result_embed)
+
     # @commands.command(name="spotify")
     # @checks.is_owner()
     # async def get_spotify(self, ctx, *, url:str):
