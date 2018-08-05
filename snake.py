@@ -353,6 +353,18 @@ class SnakeBot(commands.Bot):
         else:
             return f"```py\n{result}\n```"
 
+    # takes BytesIO object
+    async def upload_to_imgur(self, image):
+        image.seek(0)
+        async with self.aio_session.post("https://api.imgur.com/3/image", headers=dict(Authorization="Client-ID 7530251eb152634"), data=dict(image=image)) as response:
+            if response.status == 200:
+                data = await response.json()
+                image_url = data["data"]["link"]
+                return image_url
+
+            else:
+                return f"Error: {response.status}"
+
     async def upload_to_gist(self, content, filename, title="Command Result"):
         # payload = {
         #     "description": title,

@@ -1,12 +1,14 @@
 import discord
 import aiohttp
 import re
+import unicodedata
 import traceback
 
 from bs4 import BeautifulSoup as b_soup
 from datetime import datetime
 from random import choice
 from io import BytesIO
+from PIL import Image, ImageColor
 from urllib.parse import quote_plus
 
 from discord.ext import commands
@@ -14,9 +16,50 @@ from .utils import checks, time
 
 from cogs.utils.tag_manager import math_handler
 
+HEX_MATCH = re.compile(r"^#?([a-f0-9]{1,8})$", re.I)
+
+MATERIAL_COLORS = [
+    "B71C1C", # Red
+    "880E4F", # Pink
+    "4A148C", # Purple
+    "311B92", # Deep Purple
+    "1A237E", # Indigo
+    "0D47A1", # Blue
+    "01579B", # Light Blue
+    "006064", # Cyan
+    "004D40", # Teal
+    "1B5E20", # Green
+    "33691E", # Light Green
+    "827717", # Lime
+    "F57F17", # Yellow
+    "FF6F00", # Amber
+    "E65100", # Orange
+    "BF360C", # Deep Orange
+    "3E2723", # Brown
+    "212121", # Grey
+    "263238", # Blue Grey
+]
+
 class Misc:
     def __init__(self, bot):
         self.bot = bot
+
+    def parse_color(self, color_name):
+        hex_match = HEX_MATCH.match(color_name)
+        if hex_match:
+            colorname = hex_match.group(1)
+            colorname = f"{colorname}{'0' * (6 - len(colorname))}"
+            color = tuple([int(colorname[i:i+2], 16) for i in range(0, len(colorname), 2)])
+        else:
+            try:
+                color = ImageColor.getrgb(color_name)
+            except ValueError:
+                return None
+
+        if len(color) < 4:
+            color += (255,)
+
+        return color
 
     @commands.command(name="retro", brief="make retro banners")
     @checks.permissions(use_retro=True)
@@ -100,6 +143,51 @@ class Misc:
             result = f"[{e.__class__.__name__}]: {e}"
 
         await ctx.send(result)
+
+    @commands.command(name="showcolor", brief="preview a color", aliases=["show", "color"])
+    async def get_color(self, ctx, *, color_name:str):
+        color = self.parse_color(color_name)
+        if color is None:
+            await ctx.send(f"\N{CROSS MARK} Can't parse `{color_name}` as a color")
+            return
+
+        temp = BytesIO()
+        image = Image.new("RGBA", (256, 256), color)
+        image.save(temp, format="PNG")
+        image_url = await self.bot.upload_to_imgur(temp)
+        new_color_name = f"#{color[0]:0>2X}{color[1]:0>2X}{color[2]:0>2X}{color[3]:0>2X}"
+        embed = discord.Embed(title=f"`{color_name}` : **{new_color_name}**", url=image_url, color=int(new_color_name[1:-2], 16))
+        embed.set_image(url=image_url)
+
+        await ctx.send(embed=embed)
+        temp.close()
+
+    @commands.command(name="charinfo", brief="unicode info")
+    async def get_char(self, ctx, *, string:str):
+        if len(string) < 100:
+            result_embed = discord.Embed(color=0x1DE9B6)
+            for char in string:
+                unicode_name = unicodedata.name(char)
+                unicode_value = hex(ord(char))
+                result_embed.add_field(name=unicode_name, value=f"[`{unicode_value}`](http://www.fileformat.info/info/unicode/char/{unicode_value[2:]}) -> {char}", inline=True)
+            await ctx.send(embed=result_embed)
+
+    @commands.command(name="structure", brief="skeletal structure", aliases=["avogadrio"])
+    async def skeletal_structure(self, ctx, *, chem_name:str):
+        safe_name = quote_plus(chem_name.title())
+
+        async with self.bot.aio_session.get(f"https://avogadr.io/api/name/exists/{chem_name}") as response:
+
+            if await response.text() == "true":
+                color = choice(MATERIAL_COLORS)
+                print(color)
+
+                embed = discord.Embed(title=chem_name, url=f"https://avogadr.io/?background={color}&foreground=c5c5c5&compound={safe_name}&label={safe_name}", color=int(color, 16))
+                embed.set_image(url=f"https://avogadr.io/api/name/1080/1080/{color}/c5c5c5/{safe_name}?label={safe_name}")
+                await ctx.send(embed=embed)
+
+            else:
+                await ctx.send(f"\N{CROSS MARK} '{chem_name}' could not be found")
 
 def setup(bot):
     bot.add_cog(Misc(bot))
