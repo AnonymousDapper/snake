@@ -163,18 +163,19 @@ class SnakeBot(commands.Bot):
             return json.load(cfg)
 
     def __init__(self, *args, **kwargs):
+        self._DEBUG = any("debug" == arg.lower() for arg in sys.argv)
+
         self.log = logging.getLogger()
-        self.log.setLevel(logging.INFO)
+        self.log.setLevel(logging.DEBUG if self._DEBUG else logging.INFO)
         self.log.addHandler(
             logging.FileHandler(filename="snake.log", encoding="utf-8", mode="w")
         )
 
-        self._DEBUG = any("debug" == arg.lower() for arg in sys.argv)
         self.loop = asyncio.get_event_loop()
         self.permissions = permissions.Permissions
         self.permissions.bot = self
         self.config = self._read_config("config.json")
-        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=discord.Permissions(permissions=8))
+        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=discord.Permissions(permissions=3525697))
 
         credentials = self._read_config("credentials.json")
         self.token = credentials["token"]
@@ -225,10 +226,10 @@ class SnakeBot(commands.Bot):
                 )
                 session.add(msg_author)
 
-            elif msg_author.name != author.name:
+            if msg_author.name != author.name:
                 msg_author.name = author.name
 
-            elif msg_author.discrim != author.discriminator:
+            if msg_author.discrim != author.discriminator:
                 msg_author.discrim = author.discriminator
 
             new_message = sql.Message(

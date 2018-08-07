@@ -6,10 +6,10 @@ def is_owner_check(ctx):
     return ctx.message.author.id in ctx.bot.author_ids
 
 def is_server_owner_check(message):
-    if message.channel.is_private:
+    if isinstance(channel, discord.abc.PrivateChannel):
         return False
 
-    return message.author.id == message.server.owner.id
+    return message.author.id == message.guild.owner.id
 
 def check_custom_permissions(ctx, **perms):
     if is_owner_check(ctx) or is_server_owner_check(ctx.message):
@@ -39,7 +39,7 @@ def role_or_permissions(ctx, check, **perms):
         return True
     channel = ctx.message.channel
     author = ctx.message.author
-    if channel.is_private:
+    if isinstance(channel, discord.abc.PrivateChannel):
         return False
     role = discord.utils.find(check, author.roles)
 

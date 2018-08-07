@@ -64,7 +64,7 @@ ALLOWED_ATTRIBUTES = [
     "bitrate",
     "user_limit",
     "is_default"
-    # TODO: very important: add attributes per-type and global
+    # TODO: add attributes per-type and global
 ]
 
 class Tag:
@@ -95,16 +95,16 @@ class TagOverrides(tag_parser.TagFunctions):
             tag_dict = session.query(sql.TagVariable).filter_by(tag_name=self.tag.name).first()
 
             if tag_dict is None:
-                tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
+                tag_dict = sql.TagVariable(tag_name=self.tag.name, data={})
                 session.add(tag_dict)
 
-            return tag_dict.data[key]
+            return tag_dict.data.get(key, default)
 
     def set(self, key, value):
         with self.bot.db_scope() as session:
             tag_dict = session.query(sql.TagVariable).filter_by(tag_name=self.tag.name).first()
             if tag_dict is None:
-                tag_dict = sql.TagVariable(tag_name=self.tag.name, data=json.dumps({}))
+                tag_dict = sql.TagVariable(tag_name=self.tag.name, data={})
                 session.add(tag_dict)
 
             tag_dict.data[key] = value
@@ -144,6 +144,24 @@ class TagOverrides(tag_parser.TagFunctions):
     def eq(self, first, second):
         return first == second or str(first).lower() == str(second).lower()
 
+    def gt(self, first, second):
+        return float(first) > float(second)
+
+    def lt(self, first, second):
+        return float(first) < float(second)
+
+    def gte(self, first, second):
+        return float(first) >= float(second)
+
+    def lte(self, first, second):
+        return float(first) <= float(second)
+
+    def len(self, item):
+        try:
+            return len(item)
+        except:
+            return len(str(item))
+
 class Tags:
     def __init__(self, bot):
         self.bot = bot
@@ -157,11 +175,33 @@ class Tags:
             else:
                 return None
 
-    @commands.group(name="tag", pass_context=True, brief="tag manager", invoke_without_command=True)
-    async def tag_group(self, ctx):
-        print("tags")
+    @commands.group(name="tag", brief="tag manager", invoke_without_command=True)
+    async def tag_group(self, ctx, tag_name:str):
+        tag = await self.get_tag(tag_name)
+        if tag is not None:
+            try:
+                parser = tag_parser.Parser(tag.content, debug=self.bot._DEBUG, override=TagOverrides(self.bot, ctx, tag, debug=self.bot._DEBUG))
+                result = await parser()
+            except Exception as e:
+                await ctx.send(f"```diff\n- [{type(e).__name__}]: {e}\n```")
+                return
 
-    @tag_group.command(name="test", pass_context=True, brief="run a test parse")
+            result = str(result)
+            await ctx.send(f"\* {tag.name} is empty \*" if result == "" else result)
+
+        else:
+            await ctx.send(f"\N{CROSS MARK} Sorry, '{tag_name}' doesn't exist")
+
+    @tag_group.command(name="raw", brief="view raw contents")
+    async def raw_tag(self, ctx, tag_name:str):
+        tag = await self.get_tag(tag_name)
+        if tag is not None:
+            await ctx.send(f"**{tag.name}**\n`{tag.content}`")
+
+        else:
+            await ctx.send(f"\N{CROSS MARK} Sorry, '{tag_name}' doesn't exist")
+
+    @tag_group.command(name="test", brief="run a test parse")
     async def test_tag(self, ctx, *, text:str):
         tag = await self.get_tag("test")
         try:
