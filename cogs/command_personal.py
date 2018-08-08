@@ -162,6 +162,7 @@ class Personal:
 
         await ctx.send(embed=result_embed)
 
+
     # @commands.command(name="spotify")
     # @checks.is_owner()
     # async def get_spotify(self, ctx, *, url:str):

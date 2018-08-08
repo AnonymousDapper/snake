@@ -172,22 +172,38 @@ class Misc:
                 result_embed.add_field(name=unicode_name, value=f"[`{unicode_value}`](http://www.fileformat.info/info/unicode/char/{unicode_value[2:]}) -> {char}", inline=True)
             await ctx.send(embed=result_embed)
 
-    @commands.command(name="structure", brief="skeletal structure", aliases=["avogadrio"])
+    @commands.group(name="structure", brief="skeletal structure", invoke_without_command=True)
     async def skeletal_structure(self, ctx, *, chem_name:str):
-        safe_name = quote(chem_name.title())
+        with ctx.typing():
+            safe_name = quote(chem_name)
 
-        async with self.bot.aio_session.get(f"https://avogadr.io/api/name/exists/{chem_name}") as response:
+            async with self.bot.aio_session.get(f"https://avogadr.io/api/name/exists/{chem_name}") as response:
 
-            if await response.text() == "true":
-                color = choice(MATERIAL_COLORS)
-                print(color)
+                if await response.text() == "true":
+                    color = choice(MATERIAL_COLORS)
 
-                embed = discord.Embed(title=chem_name, url=f"https://avogadr.io/?background={color}&foreground=c5c5c5&compound={safe_name}&label={safe_name}", color=int(color, 16))
-                embed.set_image(url=f"https://avogadr.io/api/name/1080/1080/{color}/c5c5c5/{safe_name}?label={safe_name}")
-                await ctx.send(embed=embed)
+                    embed = discord.Embed(title=chem_name, url=f"https://avogadr.io/?background={color}&foreground=c5c5c5&compound={safe_name}&label={safe_name}", color=int(color, 16))
+                    embed.set_image(url=f"https://avogadr.io/api/name/1080/1080/{color}/c5c5c5/{safe_name}?label={quote(chem_name.title())}")
+                    await ctx.send(embed=embed)
 
-            else:
-                await ctx.send(f"\N{CROSS MARK} '{chem_name}' could not be found")
+                else:
+                    await ctx.send(f"\N{CROSS MARK} '{chem_name}' could not be found")
+
+    @skeletal_structure.command(name="smiles", brief="SMILES structure format")
+    async def smiles_structure(self, ctx, *, smiles_format:str):
+        with ctx.typing():
+            smiles = quote(smiles_format)
+            color = choice(MATERIAL_COLORS)
+            embed = discord.Embed(title=f"`{smiles_format}`", url=f"https://avogadr.io/?background={color}&foreground=c5c5c5&smiles={smiles}", color=int(color, 16))
+            embed.set_image(url=f"https://avogadr.io/api/smiles/1080/1080/{color}/c5c5c5/{smiles}")
+            await ctx.send(embed=embed)
+
+    @commands.command(name="clean", brief="remove snake's messages")
+    @commands.cooldown(2, 60, commands.BucketType.guild)
+    async def self_clean(self, ctx):
+        async for message in ctx.history(limit=30, before=ctx.message):
+            if message.author == ctx.guild.me:
+                await message.delete()
 
 def setup(bot):
     bot.add_cog(Misc(bot))

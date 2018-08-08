@@ -175,7 +175,7 @@ class SnakeBot(commands.Bot):
         self.permissions = permissions.Permissions
         self.permissions.bot = self
         self.config = self._read_config("config.json")
-        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=discord.Permissions(permissions=3525697))
+        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=discord.Permissions(permissions=70380609))
 
         credentials = self._read_config("credentials.json")
         self.token = credentials["token"]
@@ -245,15 +245,13 @@ class SnakeBot(commands.Bot):
             session.add(new_message)
 
     async def log_socket_data(self, data):
-        if isinstance(data, str):
-            json_data = json.loads(data)
-            if "t" in json_data:
-                t_type = json_data.get("t")
-                if t_type is not None:
-                    if t_type in self.socket_log:
-                        self.socket_log[t_type] += 1
-                    else:
-                        self.socket_log[t_type] = 1
+        if "t" in data:
+            t_type = data.get("t")
+            if t_type is not None:
+                if t_type in self.socket_log:
+                    self.socket_log[t_type] += 1
+                else:
+                    self.socket_log[t_type] = 1
 
     async def check_blacklist(self, data, **kwargs):
         if kwargs.get("user_id", 0) in self.author_ids:
@@ -504,9 +502,9 @@ class SnakeBot(commands.Bot):
             if not isinstance(channel, discord.abc.PrivateChannel) and isinstance(author, discord.Member):
                 await self.log_message(new_message, "edit")
 
-    async def on_socket_raw_recieve(self, payload):
+    async def on_socket_response(self, payload):
         if self._DEBUG:
-            self.log_socket_data(payload)
+            await self.log_socket_data(payload)
 
 bot = SnakeBot()
 

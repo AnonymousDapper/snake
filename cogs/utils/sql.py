@@ -15,7 +15,7 @@ class Tag(Base):
     name = Column(String(50), primary_key=True)
     author_id = Column(BigInteger, ForeignKey("users.id"))
     author = relationship("User", back_populates="tags")
-    content = Column(String(1500))
+    content = Column(String(2000))
     uses = Column(Integer)
     timestamp = Column(String)
 

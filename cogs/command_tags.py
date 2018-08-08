@@ -1,8 +1,11 @@
+import json
+
 from discord.ext import commands
+
+from datetime import datetime
+
 from .utils import sql
 from .utils.tag_manager import parser as tag_parser
-
-import json
 
 ALLOWED_ATTRIBUTES = [
     # Object
@@ -123,10 +126,13 @@ class TagOverrides(tag_parser.TagFunctions):
         else:
             return getattr(obj, key)
 
-    def author(self):
+    def me(self):
         return self.ctx.author
 
-    def self(self):
+    def snake(self):
+        return self.ctx.guild.me
+
+    def tag(self):
         return self.tag
 
     def channel(self):
@@ -192,6 +198,17 @@ class Tags:
         else:
             await ctx.send(f"\N{CROSS MARK} Sorry, '{tag_name}' doesn't exist")
 
+    @tag_group.command(name="top", brief="see most used tags")
+    async def get_leaderboard(self, ctx):
+        with self.bot.db_scope() as session:
+            results = session.query(sql.Tag).order_by(sql.Tag.uses.desc()).limit(10).all()
+
+            if not results:
+                await ctx.send("\N{CROSS MARK} Not enough tags to show leaderboard")
+
+            else:
+                await ctx.send("Top 10 tags:\n" + "\n".join(f"**{i + 1}.** {results[i].name} - {results[i].uses} uses" for i in range(len(results))))
+
     @tag_group.command(name="raw", brief="view raw contents")
     async def raw_tag(self, ctx, tag_name:str):
         tag = await self.get_tag(tag_name)
@@ -200,6 +217,48 @@ class Tags:
 
         else:
             await ctx.send(f"\N{CROSS MARK} Sorry, '{tag_name}' doesn't exist")
+
+    @tag_group.command(name="create", brief="create a new tag")
+    @commands.cooldown(1, 60, commands.BucketType.user)
+    async def make_tag(self, ctx, name, *, content:str):
+        author = ctx.author
+        with self.bot.db_scope() as session:
+            user = session.query(sql.User).filter_by(id=author.id).first()
+
+            if user is None:
+                user = sql.User(
+                    id=author.id,
+                    name=author.name,
+                    discrim=author.discriminator,
+                    bot=author.bot
+                )
+
+                session.add(user)
+
+            tag = await self.get_tag(name)
+
+            if tag is None:
+                tag = sql.Tag(
+                    name=name,
+                    author_id=user.id,
+                    content=content,
+                    uses=0,
+                    timestamp=datetime.utcnow().strftime(self.bot.config.get("msg_strftime"))
+                )
+
+                session.add(tag)
+
+            else:
+                if tag.author != user:
+                    await ctx.send(f"\N{CROSS MARK} That tag doesn't belong to you")
+                    return
+
+                else:
+                    await ctx.send(f"\N{WARNING SIGN} That tag already exists")
+                    return
+
+        await self.bot.post_reaction(ctx.message, success=True)
+
 
     @tag_group.command(name="test", brief="run a test parse")
     async def test_tag(self, ctx, *, text:str):

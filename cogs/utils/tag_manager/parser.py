@@ -72,7 +72,7 @@ class TagFunctions:
 
     # Safe, fast math parser
     def math(self, *args):
-        parser = math_handler.MathParser("".join(str(arg) for arg in args), debug=self.debug)
+        parser = math_handler.MathParser("".join(str(arg) for arg in args[::-1]), debug=self.debug)
         return parser()
 
     # Fallback setter
