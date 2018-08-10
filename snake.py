@@ -270,7 +270,7 @@ class SnakeBot(commands.Bot):
             command = session.query(sql.Command).filter_by(command_name=command_name).first()
             if command is None:
                 command = sql.Command(command_name=command_name, uses=0)
-                session.add(Command)
+                session.add(command)
 
             command.uses += 1
 
@@ -279,7 +279,7 @@ class SnakeBot(commands.Bot):
     # Safely create HTTP client session
     async def create_client_session(self):
         log.info("Creating client session for bot")
-        return aiohttp.ClientSession()
+        self.aio_session = aiohttp.ClientSession()
 
     # Blacklist
     async def check_blacklist(self, data, condition):
@@ -349,8 +349,8 @@ class SnakeBot(commands.Bot):
             await message.add_reaction(reaction_emoji)
 
         except Exception as e:
-            traceback.print_exc(e)
-            await message.channel.send(reaction_emoji)
+            if not kwargs.get("quiet"):
+                await message.channel.send(reaction_emoji)
 
     # Discord events
 
@@ -372,7 +372,7 @@ class SnakeBot(commands.Bot):
             await ctx.send("\N{WARNING SIGN} You cannot use that command in a private channel")
 
         elif isinstance(error, commands.CommandNotFound):
-            await self.post_reaction(ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}")
+            await self.post_reaction(ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}", quiet=True)
 
         elif isinstance(error, commands.DisabledCommand):
             await ctx.send("\N{WARNING SIGN} That command is disabled")
