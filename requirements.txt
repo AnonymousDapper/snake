@@ -1,7 +1,4 @@
-youtube-dl
-git+https://github.com/Rapptz/discord.py@rewrite#egg=discord.py[voice]
-lxml
-bs4
+toml
+git+https://github.com/Rapptz/discord.py.git@rewrite#egg=discord.py[voice]
 SQLAlchemy
-pypostgresql
-xxhash
+py-postgresql

@@ -1,13 +1,42 @@
+# MIT License
+#
+# Copyright (c) 2018 AnonymousDapper
+#
+# Permission is hereby granted
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
+from contextlib import contextmanager
+import traceback
+
 from sqlalchemy import ForeignKey, Integer, BigInteger, String, Date, Boolean, Column, create_engine
 
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
-from sqlalchemy.ext.declarative import declarative_base
+
+from .logger import get_logger
+
+logger = get_logger()
 
 Base = declarative_base()
 
-# Start mapping classes
+# Class -> table mappings
 
 class Tag(Base):
     __tablename__ = "tags"
@@ -121,6 +150,7 @@ class Prefix(Base):
     def __repr__(self):
         return f"<Prefix(guild_id={self.guild_id}, prefix='{self.prefix}')>"
 
+
 # Actual adapter class
 
 class SQL:
@@ -134,5 +164,22 @@ class SQL:
 
         Base.metadata.create_all(self.engine)
 
+    # Helper method to flag an obect as modified to re-commit
     def flag(self, obj, type_):
         flag_modified(obj, type_)
+
+    # Session context manager
+    @contextmanager
+    def session(self):
+        session = self.Session()
+
+        try:
+            yield session
+            session.commit()
+
+        except:
+            traceback.print_exc()
+            session.rollback()
+
+        finally:
+            session.close()

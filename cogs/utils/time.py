@@ -1,51 +1,52 @@
-from datetime import timedelta
+# MIT License
+#
+# Copyright (c) 2018 AnonymousDapper
+#
+# Permission is hereby granted
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
 
-time_format = "%a %B %d, %Y, %H:%M:%S"
-utc_offset = timedelta(hours=-5)
-
-def get_elapsed_time(date_1, date_2):
-    delta = abs(date_2 - date_1)
+# Get elapsed time in 'Xy, Xm, Xw, Xd, Xh, Xm, Xs' format
+def get_elapsed_time(date1, date2):
+    delta = abs(date2 - date1)
     time = int(delta.total_seconds())
-    track = []
-    desc = lambda n, h: ('a' if n == 1 else str(int(n))) + ('n' if h == 1 and n == 1 else '') + ''
-    mult = lambda n: 's' if n > 1 or n == 0 else ''
-    years = (time // 31536000)
-    track.append(f"{desc(years, 0)} year{mult(years)}")
 
-    time = time - (years * 31536000)
-    months = (time // 2592000)
-    track.append(f"{desc(months, 0)} month{mult(months)}")
+    names = ["y", "m", "w", "d", "h", "m", "s"]
 
-    time = time - (months * 2592000)
-    weeks = (time // 606461.538462)
-    track.append(f"{desc(weeks, 0)} week{mult(weeks)}")
+    years, remainder = divmod(time, 31536000)
+    months, remainder = divmod(remainder, 2592000)
+    weeks, remainder = divmod(remainder, 606461.538462)
+    days, remainder = divmod(remainder, 86400)
+    hours, remainder = divmod(remainder, 3600)
+    minutes, seconds = divmod(remainder, 60)
 
-    time = time - (weeks * 606461.538462)
-    days = (time // 86400)
-    track.append(f"{desc(days, 0)} day{mult(days)}")
+    times = [years, months, weeks, days, hours, minutes, seconds]
 
-    time = time - (days * 86400)
-    hours = (time // 3600)
-    track.append(f"{desc(hours, 1)} hours{mult(hours)}")
+    return ", ".join(f"{int(times[i])}{names[i]}" for i in range(len(names)) if times[i] > 0)
 
-    time = time - (hours * 3600)
-    minutes = (time // 60)
-    track.append(f"{desc(minutes, 0)} minute{mult(minutes)}")
+# Get elapsed time in ms/s format
+def get_ping_time(time1, time2):
+    millis = abs(time1 - time2).microseconds / 1000
 
-    time = time - (minutes * 60)
-    track.append(f"{desc(time, 0)} second{mult(time)}")
-
-    return ", ".join(list(filter(lambda e: not e.startswith("0 "), track)))
-
-def get_ping_time(time_1, time_2):
-    elapsed_milliseconds = abs(time_1 - time_2).microseconds / 1000
-    if elapsed_milliseconds < 1000:
+    if millis > 1000:
         format_sep = "{:d}ms"
-        elapsed_milliseconds = int(elapsed_milliseconds)
-    elif elapsed_milliseconds > 1000:
+        millis = int(millis)
+
+    else:
         format_sep = "{:.2f}s"
-        elapsed_milliseconds = elapsed_milliseconds / 1000
-    elif elapsed_milliseconds > 60000:
-        format_sep = "{:.2f}m"
-        elapsed_milliseconds = elapsed_milliseconds / 60000
-    return format_sep.format(elapsed_milliseconds)
+
+        return format_sep.format(millis)
