@@ -20,6 +20,12 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+__all__ = ["paint", "back", "attr"]
+
+from .logger import get_logger
+
+logger = get_logger()
+
 class _Text:
     """
     ANSI text color codes for easy formatting

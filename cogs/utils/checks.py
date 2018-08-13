@@ -20,9 +20,15 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+__all__ = ["is_owner"]
+
 import discord.utils
 
 from discord.ext import commands
+
+from .logger import get_logger
+
+logger = get_logger()
 
 # Predicate for owner id check
 def is_owner_check(ctx):

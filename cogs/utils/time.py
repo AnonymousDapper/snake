@@ -20,6 +20,8 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+__all__ = ["get_elapsed_time", "get_ping_time"]
+
 # Get elapsed time in 'Xy, Xm, Xw, Xd, Xh, Xm, Xs' format
 def get_elapsed_time(date1, date2):
     delta = abs(date2 - date1)

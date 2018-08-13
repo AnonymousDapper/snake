@@ -41,6 +41,7 @@ from cogs.utils import permissions
 from cogs.utils import sql
 from cogs.utils import time, checks
 from cogs.utils.colors import paint, back, attr
+from cogs.utils.imgur import ImgurAPI
 
 from discord.ext import commands
 
@@ -87,10 +88,10 @@ class Builtin:
                     self.bot.load_extension(cog_name)
 
                 except Exception as e:
-                    await ctx.send(f"Failed to load `{name}`: [{type(e).__name__}]: {e}")
+                    await ctx.send(f"Failed to load {name}: [{type(e).__name__}]: `{e}`")
                     return
 
-                finally:
+                else:
                     await self.bot.post_reaction(ctx.message, success=True)
 
         elif action == "unload":
@@ -102,10 +103,10 @@ class Builtin:
                     self.bot.unload_extension(cog_name)
 
                 except Exception as e:
-                    await ctx.send(f"Failed to unload `{name}`: [{type(e).__name__}]: {e}")
+                    await ctx.send(f"Failed to unload {name}: [{type(e).__name__}]: `{e}`")
                     return
 
-                finally:
+                else:
                     await self.bot.post_reaction(ctx.message, success=True)
 
         elif action == "reload":
@@ -120,10 +121,10 @@ class Builtin:
 
 
                 except Exception as e:
-                    await ctx.send(f"Failed to reload `{name}`: [{type(e).__name__}]: {e}")
+                    await ctx.send(f"Failed to reload {name}: [{type(e).__name__}]: `{e}`")
                     return
 
-                finally:
+                else:
                     await self.bot.post_reaction(ctx.message, success=True)
 
     @manage_cogs.command(name="list", brief="list loaded cogs")
@@ -146,22 +147,31 @@ class Builtin:
         await ctx.send(f"```md\n# Snake Bot Info\n* Discord.py version {discord.version_info.major}.{discord.version_info.minor}.{discord.version_info.micro}\n* Python version {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\n* Latest Commit {result.stdout}\n```")
 
 class SnakeBot(commands.Bot):
-    # stdout wrapper to capture output
+    # stderr wrapper
     @contextmanager
-    def output_wrapper(self):
-        old_out = sys.stdout
+    def stderr_wrapper(self):
         old_err = sys.stderr
 
-        new_out = StringIO()
         new_err = StringIO()
 
         sys.stderr = new_err
+
+        yield new_err
+
+        sys.stderr = old_err
+
+    # stdout wrapper
+    @contextmanager
+    def stdout_wrapper(self):
+        old_out = sys.stdout
+
+        new_out = StringIO()
+
         sys.stdout = new_out
 
-        yield new_out, new_err
+        yield new_out
 
         sys.stdout = old_out
-        sys.stderr = old_err
 
     # Quick method to read toml configs
     def _read_config(self, filename):
@@ -185,13 +195,15 @@ class SnakeBot(commands.Bot):
         credentials = self._read_config("credentials.toml")
         self.token = credentials["Discord"]["token"]
 
+        self.imgur_api = ImgurAPI(client_id=credentials["Imgur"]["client_id"])
+
         # Init superclass
         super().__init__(
             *args,
             **kwargs,
             description="\nHsss!\n",
             help_attrs=dict(hidden=True),
-            command_not_found="\N{WARNING SIGN} Command `{}` doesn't exist!",
+            command_not_found=None,
             command_has_no_subcommand="\N{WARNING SIGN} Command `{1}` doesn't exist in the `{0.name}` group!",
             command_prefix=self.get_prefix
         )
@@ -255,7 +267,7 @@ class SnakeBot(commands.Bot):
     # Socket data
     async def log_socket_data(self, data):
         if "t" in data:
-            t_type = date.get("t")
+            t_type = data.get("t")
 
             if t_type is not None:
                 if t_type in self.socket_log:
@@ -351,6 +363,15 @@ class SnakeBot(commands.Bot):
         except Exception as e:
             if not kwargs.get("quiet"):
                 await message.channel.send(reaction_emoji)
+
+    # Upload long text to personal hastebin
+    async def paste_text(self, content):
+        async with self.aio_session.post("http://thinking-rock.a-sketchy.site:8000/documents", data=content, headers={"Content-Type": "application/json"}) as response:
+            if response.status != 200:
+                return f"Could not upload: ({response.status})"
+
+            data = await response.json()
+            return f"http://thinking-rock.a-sketchy.site:8000/{data['key']}"
 
     # Discord events
 
