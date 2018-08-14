@@ -59,7 +59,7 @@ else:
 _DEBUG = any("debug" == arg.lower() for arg in sys.argv)
 
 # Logging setup
-logger.set_level(_DEBUG)
+logger.set_level(debug=_DEBUG)
 log = logger.get_logger()
 
 class Builtin:
@@ -433,8 +433,11 @@ class SnakeBot(commands.Bot):
         channel = message.channel
         author = message.author
 
+        if author.bot or not self.is_ready():
+            return
+
         if not isinstance(channel, discord.abc.PrivateChannel):
-            if author.bot or await self.check_blacklist("command", (sql.Blacklist.guild_id == channel.guild.id) | (sql.Blacklist.channel_id == channel.id)):
+            if await self.check_blacklist("command", (sql.Blacklist.guild_id == channel.guild.id) | (sql.Blacklist.channel_id == channel.id)):
                 return
 
             if isinstance(author, discord.Member):
