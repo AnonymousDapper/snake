@@ -22,8 +22,8 @@
 
 __all__ = ["Tag", "Permission", "User", "Blacklist", "Whitelist", "TagVariable", "Message", "Command", "Prefix", "SQL"]
 
-from contextlib import contextmanager
 import traceback
+from contextlib import contextmanager
 
 from sqlalchemy import ForeignKey, Integer, BigInteger, String, Date, Boolean, Column, create_engine
 
@@ -157,17 +157,19 @@ class Prefix(Base):
 
 class SQL:
     def __init__(self, *args, **kwargs):
+        do_echo = kwargs.get("echo", False)
         self.db_name = kwargs.get("db_name")
         self.db_username = kwargs.get("db_username")
         self.db_password = kwargs.get("db_password")
         self.db_api = kwargs.get("db_api", "pypostgresql")
-        self.engine = create_engine(f"postgresql+{self.db_api}://{self.db_username}:{self.db_password}@localhost:5432/{self.db_name}", echo=False)
+        self.engine = create_engine(f"postgresql+{self.db_api}://{self.db_username}:{self.db_password}@localhost:5432/{self.db_name}", echo=do_echo)
         self.Session = sessionmaker(bind=self.engine)
 
         Base.metadata.create_all(self.engine)
 
     # Helper method to flag an obect as modified to re-commit
-    def flag(self, obj, type_):
+    @staticmethod
+    def flag(obj, type_):
         flag_modified(obj, type_)
 
     # Session context manager

@@ -56,4 +56,7 @@ def get_logger():
     module_logger.setLevel(LOG_LEVEL)
     module_logger.addHandler(FILE_HANDLER)
 
+    del call_frame
+    del call_module
+
     return module_logger

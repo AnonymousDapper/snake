@@ -100,5 +100,5 @@ def back(text, color):
 # Set text attributes
 def attr(text, attribute):
     if hasattr(_Attributes, attribute):
-        return f"{getattr(_Attributes, color)}{text}{_Attributes.off}"
+        return f"{getattr(_Attributes, attribute)}{text}{_Attributes.off}"
     raise ValueError(f"invalid attribute name: {attribute}")

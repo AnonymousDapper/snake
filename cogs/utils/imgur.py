@@ -22,8 +22,9 @@
 
 __all__ = ["ImgurApiError", "PostRequestLimitError", "ApiCreditLimitError", "ImgurAPI"]
 
-import aiohttp
 import asyncio
+
+import aiohttp
 
 from .logger import get_logger
 

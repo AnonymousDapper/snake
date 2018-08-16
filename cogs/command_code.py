@@ -22,10 +22,15 @@
 
 import inspect
 import os
-import sqlalchemy
 import subprocess
 
+from contextlib import redirect_stdout, redirect_stderr, suppress
 from functools import partial
+from io import StringIO
+from types import BuiltinFunctionType
+
+import discord
+import sqlalchemy
 
 from discord.ext import commands
 
@@ -34,6 +39,43 @@ from .utils.logger import get_logger
 
 logger = get_logger()
 
+MAGIC_OPERATOR_NAMES = [
+    (("__eq__",), "=="),
+    (("__ne__",), "!="),
+    (("__lt__",), "<"),
+    (("__gt__",), ">"),
+    (("__le__",), "<="),
+    (("__ge__",), ">="),
+    (("__pos__",), "+N"),
+    (("__neg__",), "-N"),
+    (("__invert__",), "~"),
+    (("__add__", "__radd__"), "+"),
+    (("__sub__", "__rsub__"), "-"),
+    (("__mul__", "__rmul__"), "*"),
+    (("__floordiv__", "__rfloordiv__"), "//"),
+    (("__div__", "__rdiv__"), "/"),
+    (("__mod__", "__rmod__"), "%"),
+    (("__pow__", "__rpow__"), "**"),
+    (("__lshift__", "__rlshift__"), "<<"),
+    (("__rshift__", "__rrshift__"), ">>"),
+    (("__and__", "__rand__"), "&"),
+    (("__or__", "__ror__"), "|"),
+    (("__xor__", "__rxor__"), "^"),
+    (("__iadd__",), "+="),
+    (("__isub__",), "-="),
+    (("__imul__",), "*="),
+    (("__ifloordiv__",), "//="),
+    (("__idiv__",), "/="),
+    ("__imod__", "%="),
+    (("__ipow__",), "**="),
+    (("__ilshift__",), "<<="),
+    (("__irshift__",), ">>="),
+    (("__iand__",), "&="),
+    (("__ior__",), "|="),
+    (("__ixor__",), "^=")
+]
+
+
 class Debug:
     def __init__(self, bot):
         self.bot = bot
@@ -41,7 +83,8 @@ class Debug:
         self.NL = "\n" # for embedding in f-strings
 
     # Strip formatting from codeblocks
-    def clean(self, code):
+    @staticmethod
+    def clean(code):
         if code.startswith("```") and code.endswith("```"):
             return "\n".join(code.split("\n")[1:-1])
 
@@ -78,106 +121,97 @@ class Debug:
 
     # Utility function to exec code
     async def do_exec(self, scope, code, raw=False):
-        with self.bot.stdout_wrapper() as stdout, self.bot.stderr_wrapper() as stderr:
-            try:
-                compiled = compile(code, "<exec>", "exec")
-                scope["__compiled"] = compiled
+        stdout, stderr = StringIO(), StringIO()
+        with redirect_stdout(stdout):
+            with redirect_stderr(stderr):
+                try:
+                    compiled = compile(code, "<exec>", "exec")
+                    scope["__compiled"] = compiled
 
-                exec(compiled, scope)
+                    exec(compiled, scope)
 
-                raw_result = await scope["__coro"]()
+                    raw_result = await scope["__coro"]()
 
-            except SyntaxError as e:
-                return True, f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```"
+                except SyntaxError as e:
+                    return True, f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```"
 
-            except Exception as e:
-                return True, f"```md\n- {type(e).__name__}: {e}\n```"
+                except Exception as e:
+                    return True, f"```md\n- {type(e).__name__}: {e}\n```"
 
         result_out = str(stdout.getvalue())
         result_err = str(stderr.getvalue())
 
-        result = f"```py\n{result_out}\n{('########## Errors ##########' + self.NL + result_err) if result_err != '' else ''}\n```"
+        result = f"```py\n{result_out}{f'{self.NL}======== Errors ========{self.NL}{result_err}' if result_err != '' else ''}{f'{self.NL}======== Returned Value ========{self.NL}{repr(raw_result)}' if raw_result is not None else ''}\n```"
 
         if not raw:
-            return False, result
+            return False, result, raw_result
 
         else:
             return False, raw_result
 
     # Utility function to scrape information from a code result
     def get_info(self, result):
+        data = repr(result)
+
         info = []
-        header = repr(result).replace("`", "\u200B")
 
         info.append(("Type", type(result).__name__))
         info.append(("Memory", hex(id(result))))
 
-        # Get module name
-        try:
+        is_builtin = isinstance(result, BuiltinFunctionType)
+
+        # Get module name, suppressing errors
+        with suppress(TypeError, AttributeError):
             info.append(("Module", inspect.getmodule(result).__name__))
 
-        except (TypeError, AttributeError) as e:
-            logger.warn(f"{type(e).__name__}: {e}")
-
         # Get source file
-        try:
+        with suppress(TypeError):
             location = inspect.getfile(result)
-
-        except TypeError as e:
-            logger.debug(f"{type(e).__name__}: {e}")
-
-        else:
-            cwd = os.getcwd()
+            cwd = os.getcwd
 
             if location.startswith(cwd):
-                location = "." + location[len(cwd):]
+                location = f".{location[len(cwd):]}"
 
             info.append(("File", location))
 
         # Get source lines
-        try:
-            source_lines, source_offset = inspect.getsourcelines(result)
+        with suppress(OSError, TypeError):
+            lines, offset = inspect.getsourcelines(result)
 
-        except (OSError, TypeError) as e:
-            logger.debug(f"{type(e).__name__}: {e}")
-
-        else:
-            info.append(("Lines", f"{source_offset}-{source_offset + len(source_lines)}"))
+            info.append(("Lines", f"L{offset} - L{offset + len(lines)}"))
 
         # Get signature
-        try:
-            signature = inspect.signature(result)
+        with suppress(TypeError, AttributeError, ValueError):
+            info.append(("Signature", f"{result.__name__ if getattr(result, '__name__') else type(result).__name__}{inspect.signature(result)}"))
 
-        except (TypeError, AttributeError, ValueError) as e:
-            logger.debug(f"{type(e).__name__}: {e}")
+        # Get inheritance order
+        with suppress(TypeError, AttributeError):
+            if is_builtin:
+                info.append(("Inheritance", "is builtin"))
 
-        else:
-            info.append(("Signature", str(signature)))
+            else:
+                if inspect.isclass(result):
+                    obj = result
 
-        # Get inheritance
-        if inspect.isclass(result):
-            obj = result
+                else:
+                    obj = type(result)
 
-        else:
-            obj = type(result)
+                info.append(("Inheritance", " -> ".join(thing.__name__ for thing in inspect.getmro(obj))))
 
-            try:
-                info.append(("Inheritance", " -> ".join(x.__name__ for x in inspect.getmro(obj))))
+        # Get supported operators
+        info.append(("Operators",  " ".join(block[1] for block in MAGIC_OPERATOR_NAMES if any(hasattr(result, name) for name in block[0]))))
 
-            except (TypeError, AttributeError) as e:
-                logger.debug(f"{type(e).__name__}: {e}")
 
         # Get length
         if isinstance(result, (str, tuple, list, bytes)):
             info.append(("Length", len(result)))
 
-        flat_info = "\n".join(f"{x:14.14} :: {y}" for x, y in info)
-        return f"```prolog\n{header}\n\n==== Data ====\n\n{flat_info}\n```"
+        return f"```prolog\n{data}\n\n======== Data ========\n\n{self.NL.join(f'{a:12.12} = {b}' for a, b in info)}\n```"
 
     # Run code in eval mode
     @commands.command(name="debug", brief="eval mode")
     @checks.is_owner()
-    async def run_debug(self, ctx, *, code:str):
+    async def run_debug(self, ctx, *, code: str):
         source = self.clean(code)
 
         scope = globals()
@@ -194,6 +228,10 @@ class Debug:
 
         error, result = await self.do_eval(scope, source)
 
+        if isinstance(result, discord.Embed):
+            await ctx.send(embed=result)
+            return
+
         if not error:
             result = await self.check_length(f"```py\n{result}\n```")
 
@@ -202,7 +240,7 @@ class Debug:
     # Run code in exec mode
     @commands.command(name="run", brief="exec mode")
     @checks.is_owner()
-    async def run_exec(self, ctx, *, code:str):
+    async def run_exec(self, ctx, *, code: str):
         source = "async def __coro():\n  " + "\n  ".join(self.clean(code).split("\n"))
 
         scope = globals()
@@ -217,7 +255,10 @@ class Debug:
             __code=source
         ))
 
-        error, result = await self.do_exec(scope, source)
+        error, result, raw = await self.do_exec(scope, source)
+
+        if isinstance(raw, discord.Embed):
+            await ctx.send(embed=raw)
 
         if not error:
             result = await self.check_length(result)
@@ -227,7 +268,7 @@ class Debug:
     # Run SQL query
     @commands.command(name="sql", brief="execute sql")
     @checks.is_owner()
-    async def run_sql(self, ctx, *, query:str):
+    async def run_sql(self, ctx, *, query: str):
         sql = self.clean(query)
 
         if not sql.endswith(";"):
@@ -237,7 +278,7 @@ class Debug:
             results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql))
 
 
-        except sqlalchemy.exc.ProgramingError as e:
+        except sqlalchemy.exc.ProgrammingError as e:
             await ctx.send(f"```diff\n- {e.orig.message}\n```\n{e.orig.details.get('hint', 'Unknown fix')}\n\nDouble check your query:\n```sql\n{e.statement}\n{' ' * (int(e.orig.details.get('position', '0')) - 1)}^\n```")
             return
 
@@ -268,7 +309,7 @@ class Debug:
     # Run shell commands
     @commands.command(name="sh", brief="system terminal")
     @checks.is_owner()
-    async def run_shell(self, ctx, *, command:str):
+    async def run_shell(self, ctx, *, command: str):
         command = self.clean(command)
 
         result = await self.bot.loop.run_in_executor(None,
@@ -291,12 +332,12 @@ class Debug:
     # Expression inspection group
     @commands.group(name="inspect", brief="inspect an expression", invoke_without_command=True)
     @checks.is_owner()
-    async def inspect_group(self, ctx, *, expression:str):
+    async def inspect_group(self, ctx, *, expression: str):
         await ctx.invoke(self.inspect_debug, code=expression)
 
     @inspect_group.command(name="debug", brief="inspect an eval result")
     @checks.is_owner()
-    async def inspect_debug(self, ctx, *, code:str):
+    async def inspect_debug(self, ctx, *, code: str):
         source = self.clean(code)
 
         scope = globals()
@@ -313,15 +354,18 @@ class Debug:
 
         error, result = await self.do_eval(scope, source)
 
+        if isinstance(result, discord.Embed):
+            await ctx.send(embed=result)
+
         if error:
             await ctx.send(result)
 
         else:
-            await ctx.send(self.get_info(result))
+            await ctx.send(await self.check_length(self.get_info(result)))
 
     @inspect_group.command(name="run", brief="inspect an exec result")
     @checks.is_owner()
-    async def inspect_run(self, ctx, *, code:str):
+    async def inspect_run(self, ctx, *, code: str):
         source = "async def __coro():\n  " + "\n  ".join(self.clean(code).split("\n"))
 
         scope = globals()
@@ -338,11 +382,14 @@ class Debug:
 
         error, result = await self.do_exec(scope, source, raw=True)
 
+        if isinstance(result, discord.Embed):
+            await ctx.send(embed=result)
+
         if error:
             await ctx.send(result)
 
         else:
-            await ctx.send(self.get_info(result))
+            await ctx.send(await self.check_length(self.get_info(result)))
 
 # Extension setup
 def setup(bot):

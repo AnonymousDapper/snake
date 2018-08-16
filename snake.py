@@ -20,30 +20,27 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-
-import aiohttp
 import asyncio
-import discord
 import functools
 import os
 import subprocess
 import sys
-import toml
 import traceback
 
-from contextlib import contextmanager
 from datetime import datetime
-from inspect import isawaitable
-from io import StringIO
+
+import aiohttp
+import discord
+import toml
+
+from discord.ext import commands
 
 from cogs.utils import logger
 from cogs.utils import permissions
 from cogs.utils import sql
 from cogs.utils import time, checks
-from cogs.utils.colors import paint, back, attr
+from cogs.utils.colors import paint
 from cogs.utils.imgur import ImgurAPI
-
-from discord.ext import commands
 
 # Attempt to load uvloop for improved event loop performance
 try:
@@ -56,7 +53,7 @@ else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
     print("Using uvloop policy")
 
-_DEBUG = any("debug" == arg.lower() for arg in sys.argv)
+_DEBUG = any(arg.lower() == "debug" for arg in sys.argv)
 
 # Logging setup
 logger.set_level(debug=_DEBUG)
@@ -69,64 +66,68 @@ class Builtin:
     @commands.command(name="quit", brief="exit bot")
     @checks.is_owner()
     async def quit_command(self, ctx):
-        asyncio.ensure_future(self.bot.aio_session.close())
+        self.bot.loop.create_task(self.bot.aio_session.close())
         await self.bot.logout()
 
     @commands.group(name="cog", brief="manage cogs", invoke_without_command=True)
     @checks.is_owner()
-    async def manage_cogs(self, ctx, name:str, action:str):
-        name = name.lower()
-        action = action.lower()
-        cog_name = "cogs.command_" + name
+    async def manage_cogs(self, ctx, name: str, action: str):
+        print("cogs")
 
-        if action == "load":
-            if self.bot.extensions.get(cog_name) is not None:
-                await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+    @manage_cogs.command(name="load", brief="load cog")
+    @checks.is_owner()
+    async def load_cog(self, ctx, name: str):
+        cog_name = "cogs.command_" + name.lower()
 
-            else:
-                try:
-                    self.bot.load_extension(cog_name)
+        if self.bot.extensions.get(cog_name) is not None:
+            await self.bot.post_reaction(ctx.message, emoji="\n{SHRUG}")
 
-                except Exception as e:
-                    await ctx.send(f"Failed to load {name}: [{type(e).__name__}]: `{e}`")
-                    return
+        else:
+            try:
+                self.bot.load_extension(cog_name)
 
-                else:
-                    await self.bot.post_reaction(ctx.message, success=True)
-
-        elif action == "unload":
-            if self.bot.extensions.get(cog_name) is None:
-                await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+            except Exception as e:
+                await ctx.send(f"Failed to load {name}: [{type(e).__name__}]: `{e}`")
 
             else:
-                try:
-                    self.bot.unload_extension(cog_name)
+                await self.bot.post_reaction(ctx.message, success=True)
 
-                except Exception as e:
-                    await ctx.send(f"Failed to unload {name}: [{type(e).__name__}]: `{e}`")
-                    return
+    @manage_cogs.command(name="unload", brief="unload cog")
+    @checks.is_owner()
+    async def unload_cog(self, ctx, name: str):
+        cog_name = "cogs.command_" + name.lower()
 
-                else:
-                    await self.bot.post_reaction(ctx.message, success=True)
+        if self.bot.extensions.get(cog_name) is None:
+            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
 
-        elif action == "reload":
-            if self.bot.extensions.get(cog_name) is None:
-                await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+        else:
+            try:
+                self.bot.unload_extension(cog_name)
+
+            except Exception as e:
+                await ctx.send(f"Failed to unload {name}: [{type(e).__name__}]: `{e}`")
 
             else:
-                try:
-                    self.bot.unload_extension(cog_name)
-                    self.bot.load_extension(cog_name)
+                await self.bot.post_reaction(ctx.message, success=True)
 
+    @manage_cogs.command(name="reload", brief="reload cog")
+    @checks.is_owner()
+    async def reload_cog(self, ctx, name: str):
+        cog_name = "cogs.command_" + name.lower()
 
+        if self.bot.extensions.get(cog_name) is None:
+            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
 
-                except Exception as e:
-                    await ctx.send(f"Failed to reload {name}: [{type(e).__name__}]: `{e}`")
-                    return
+        else:
+            try:
+                self.bot.unload_extension(cog_name)
+                self.bot.load_extension(cog_name)
 
-                else:
-                    await self.bot.post_reaction(ctx.message, success=True)
+            except Exception as e:
+                await ctx.send(f"Failed to reload {name}: [{type(e).__name__}]: `{e}`")
 
+            else:
+                await self.bot.post_reaction(ctx.message, success=True)
     @manage_cogs.command(name="list", brief="list loaded cogs")
     @checks.is_owner()
     async def list_cogs(self, ctx, name: str = None):
@@ -147,34 +148,9 @@ class Builtin:
         await ctx.send(f"```md\n# Snake Bot Info\n* Discord.py version {discord.version_info.major}.{discord.version_info.minor}.{discord.version_info.micro}\n* Python version {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\n* Latest Commit {result.stdout}\n```")
 
 class SnakeBot(commands.Bot):
-    # stderr wrapper
-    @contextmanager
-    def stderr_wrapper(self):
-        old_err = sys.stderr
-
-        new_err = StringIO()
-
-        sys.stderr = new_err
-
-        yield new_err
-
-        sys.stderr = old_err
-
-    # stdout wrapper
-    @contextmanager
-    def stdout_wrapper(self):
-        old_out = sys.stdout
-
-        new_out = StringIO()
-
-        sys.stdout = new_out
-
-        yield new_out
-
-        sys.stdout = old_out
-
     # Quick method to read toml configs
-    def _read_config(self, filename):
+    @staticmethod
+    def _read_config(filename):
         with open(filename, "r", encoding="utf-8") as cfg:
             return toml.load(cfg)
 
@@ -189,11 +165,16 @@ class SnakeBot(commands.Bot):
         # Load config and in-memory storage
         self.config = self._read_config("config.toml")
         self.socket_log = {}
-        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=discord.Permissions(permissions=70380609))
+
+        self.required_permissions = discord.Permissions(permissions=70380609)
+        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=self.required_permissions)
 
         # Load credentials
         credentials = self._read_config("credentials.toml")
         self.token = credentials["Discord"]["token"]
+
+        self.start_time = None
+        self.resume_time = None
 
         self.imgur_api = ImgurAPI(client_id=credentials["Imgur"]["client_id"])
 
@@ -227,64 +208,34 @@ class SnakeBot(commands.Bot):
                 except Exception as e:
                     print(f"Failed to load {paint(name, 'b_red')}: [{type(e).__name__}]: {e}")
 
-    # Logging
+        # Load whitelist check
+        self.add_check(self.global_check, call_once=True)
 
-    # Messages
-    async def log_message(self, message, action):
-        author = message.author
-        channel = message.channel
-        guild = channel.guild
+    # Global whitelist/blacklist check
+    async def global_check(self, ctx):
+        message = ctx.message
+        guild = ctx.guild
+        author = ctx.author
+        channel = ctx.channel
 
-        with self.db.session() as session:
-            msg_author = session.query(sql.User).filter_by(id=author.id).first()
+        if author.id in self.config["General"]["owners"]:
+            return True
 
-            if msg_author is None:
-                msg_author = sql.User(
-                    id=author.id,
-                    name=author.name,
-                    bot=author.bot,
-                    discrim=author.discriminator
-                )
-                session.add(msg_author)
+        if await self.check_whitelist("command",
+            (sql.Whitelist.user_id == author.id) |
+            (sql.Whitelist.guild_id == guild.id) |
+            (sql.Whitelist.channel_id == channel.id)
+        ):
 
-            if msg_author.name != author.name:
-                msg_author.name = author.name
+            return True
 
-            if msg_author.discrim != author.discriminator:
-                msg_author.discrim = author.discriminator
+        if await self.check_blacklist("command",
+            (sql.Blacklist.user_id == author.id) |
+            (sql.Blacklist.guild_id == guild.id) |
+            (sql.Blacklist.channel_id == channel.id)
+        ):
 
-            new_message = sql.Message(
-                id=message.id,
-                timestamp=message.created_at.strftime(self.config["Format"]["msg_time"]),
-                author_id=author.id,
-                channel_id=channel.id,
-                guild_id=guild.id,
-                content=message.content,
-                action=action
-            )
-            session.add(new_message)
-
-    # Socket data
-    async def log_socket_data(self, data):
-        if "t" in data:
-            t_type = data.get("t")
-
-            if t_type is not None:
-                if t_type in self.socket_log:
-                    self.socket_log[t_type] += 1
-
-                else:
-                    self.socket_log[t_type] = 1
-
-    # Commands
-    async def log_command_use(self, command_name):
-        with self.db.session() as session:
-            command = session.query(sql.Command).filter_by(command_name=command_name).first()
-            if command is None:
-                command = sql.Command(command_name=command_name, uses=0)
-                session.add(command)
-
-            command.uses += 1
+            return False
 
     # Misc functions
 
@@ -295,6 +246,7 @@ class SnakeBot(commands.Bot):
 
     # Blacklist
     async def check_blacklist(self, data, condition):
+        print("checking blacklist")
         with self.db.session() as session:
             entry = session.query(sql.Blacklist).filter(condition).first()
 
@@ -310,6 +262,7 @@ class SnakeBot(commands.Bot):
 
     # Whitelist
     async def check_whitelist(self, data, condition):
+        print("checking whitelist")
         with self.db.session() as session:
             entry = session.query(sql.Whitelist).filter(condition).first()
 
@@ -385,7 +338,7 @@ class SnakeBot(commands.Bot):
     async def on_resume(self):
         self.resume_time = datetime.utcnow()
         resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
-        print(f"Resumed as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nResumed in {paint(boot_duration, 'cyan')}")
+        print(f"Resumed as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nResumed in {paint(resumed_after, 'cyan')}")
 
     # Coommand tossed an error
     async def on_command_error(self, ctx, error):
@@ -401,7 +354,7 @@ class SnakeBot(commands.Bot):
         elif isinstance(error, commands.CommandOnCooldown):
             await ctx.send(f"{ctx.author.mention} slow down! Try that again in {error.retry_after:.1f} seconds")
 
-        elif isinstance(error, commands.MissingRequiredArgument) or isinstance(error, commands.BadArgument):
+        elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument)):
             await ctx.send(f"\N{WARNING SIGN} {error}")
 
         elif isinstance(error, commands.CommandInvokeError):
@@ -412,59 +365,6 @@ class SnakeBot(commands.Bot):
 
         else:
             print(f"{paint(type(error).__name__, 'b_red')}: {error}")
-
-    # Command was triggered
-    async def on_command(self, ctx):
-        message = ctx.message
-        destination = None
-
-        if isinstance(message.channel, discord.abc.PrivateChannel):
-            destination = "Private Message"
-
-        else:
-            destination = f"[{message.guild.name} #{message.channel.name}]"
-
-        log.info(f"{destination}: {message.author.name}: {message.clean_content}")
-
-        await self.log_command_use(ctx.command.qualified_name)
-
-    # Message arrived
-    async def on_message(self, message):
-        channel = message.channel
-        author = message.author
-
-        if author.bot or not self.is_ready():
-            return
-
-        if not isinstance(channel, discord.abc.PrivateChannel):
-            if await self.check_blacklist("command", (sql.Blacklist.guild_id == channel.guild.id) | (sql.Blacklist.channel_id == channel.id)):
-                return
-
-            if isinstance(author, discord.Member):
-                await self.log_message(message, "create")
-
-        if not await self.check_blacklist("command", sql.Blacklist.user_id == author.id):
-            # TODO: role permission checking
-
-            await self.process_commands(message)
-
-        else:
-            self.log.info(f"Failed blacklist check for {author.name} ({author.id})")
-
-    # Message deleted
-    async def on_message_delete(self, message):
-        channel = message.channel
-        author = message.author
-        if not isinstance(channel, discord.abc.PrivateChannel) and isinstance(author, discord.Member):
-            await self.log_message(message, "delete")
-
-    # Messaged edited
-    async def on_message_edit(self, old_message, new_message):
-        channel = new_message.channel
-        author = new_message.author
-        if old_message.content != new_message.content:
-            if not isinstance(channel, discord.abc.PrivateChannel) and isinstance(author, discord.Member):
-                await self.log_message(new_message, "edit")
 
     # Reaction added
     async def on_reaction_add(self, reaction, user):
@@ -477,14 +377,21 @@ class SnakeBot(commands.Bot):
             elif reaction.emoji == "\N{WASTEBASKET}" and message.author == message.guild.me:
                 await message.delete()
 
-    # Socket event arrived
-    async def on_socket_response(self, payload):
-        if self.debug:
-            await self.log_socket_data(payload)
+    # Magic methods for fun code
+    def __enter__(self):
+        if self.is_ready():
+            raise RuntimeError("SnakeBot already started")
+
+        self.add_cog(Builtin(self))
+
+        return self
+
+    def __exit__(self, t, value, tb):
+        print(t, value, tb)
+
+        return True
+
 
 # Running
-bot = SnakeBot()
-
-bot.add_cog(Builtin(bot))
-
-bot.run(bot.token)
+with SnakeBot() as bot:
+    bot.run(bot.token)
