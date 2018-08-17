@@ -64,18 +64,18 @@ class Builtin:
         self.bot = bot
 
     @commands.command(name="quit", brief="exit bot")
-    @checks.is_owner()
+    @checks.is_developer()
     async def quit_command(self, ctx):
         self.bot.loop.create_task(self.bot.aio_session.close())
         await self.bot.logout()
 
     @commands.group(name="cog", brief="manage cogs", invoke_without_command=True)
-    @checks.is_owner()
+    @checks.is_developer()
     async def manage_cogs(self, ctx, name: str, action: str):
         print("cogs")
 
     @manage_cogs.command(name="load", brief="load cog")
-    @checks.is_owner()
+    @checks.is_developer()
     async def load_cog(self, ctx, name: str):
         cog_name = "cogs.command_" + name.lower()
 
@@ -93,7 +93,7 @@ class Builtin:
                 await self.bot.post_reaction(ctx.message, success=True)
 
     @manage_cogs.command(name="unload", brief="unload cog")
-    @checks.is_owner()
+    @checks.is_developer()
     async def unload_cog(self, ctx, name: str):
         cog_name = "cogs.command_" + name.lower()
 
@@ -111,7 +111,7 @@ class Builtin:
                 await self.bot.post_reaction(ctx.message, success=True)
 
     @manage_cogs.command(name="reload", brief="reload cog")
-    @checks.is_owner()
+    @checks.is_developer()
     async def reload_cog(self, ctx, name: str):
         cog_name = "cogs.command_" + name.lower()
 

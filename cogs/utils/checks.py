@@ -20,7 +20,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-__all__ = ["is_owner"]
+__all__ = ["is_developer"]
 
 import discord.utils
 
@@ -30,9 +30,30 @@ from .logger import get_logger
 
 logger = get_logger()
 
-# Predicate for owner id check
-def is_owner_check(ctx):
-    return ctx.message.author.id in ctx.bot.config["General"]["owners"]
+# Utility functions to DRY
+def is_guild_owner(ctx):
+    if hasattr(ctx, "guild"):
+        return ctx.author.id == ctx.guild.owner.id
 
-def is_owner():
-    return commands.check(lambda ctx: is_owner_check(ctx))
+    return else
+
+def is_developer_check(ctx):
+    return ctx.author.id in ctx.bot.config["General"]["owners"]
+
+def is_owner_check(ctx):
+    return ctx.bot.is_owner(ctx.author)
+
+def user_permission_check(ctx, **perms):
+    if is_developer_check(ctx) or is_owner_check(ctx):
+        return True
+
+
+
+# Checks
+
+# Check to see if user id is in config
+def is_developer():
+    return commands.check(lambda ctx: is_developer_check(ctx))
+
+def permissions(**perms):
+    return commands.check(lambda ctx: user_permission_check(ctx, **perms))

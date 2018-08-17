@@ -182,7 +182,7 @@ class Debug:
 
         # Get signature
         with suppress(TypeError, AttributeError, ValueError):
-            info.append(("Signature", f"{result.__name__ if getattr(result, '__name__') else type(result).__name__}{inspect.signature(result)}"))
+            info.append(("Signature", f"{result.__name__ if hasattr(result, '__name__') else type(result).__name__}{inspect.signature(result)}"))
 
         # Get inheritance order
         with suppress(TypeError, AttributeError):
@@ -210,7 +210,7 @@ class Debug:
 
     # Run code in eval mode
     @commands.command(name="debug", brief="eval mode")
-    @checks.is_owner()
+    @checks.is_developer()
     async def run_debug(self, ctx, *, code: str):
         source = self.clean(code)
 
@@ -239,7 +239,7 @@ class Debug:
 
     # Run code in exec mode
     @commands.command(name="run", brief="exec mode")
-    @checks.is_owner()
+    @checks.is_developer()
     async def run_exec(self, ctx, *, code: str):
         source = "async def __coro():\n  " + "\n  ".join(self.clean(code).split("\n"))
 
@@ -267,7 +267,7 @@ class Debug:
 
     # Run SQL query
     @commands.command(name="sql", brief="execute sql")
-    @checks.is_owner()
+    @checks.is_developer()
     async def run_sql(self, ctx, *, query: str):
         sql = self.clean(query)
 
@@ -308,7 +308,7 @@ class Debug:
 
     # Run shell commands
     @commands.command(name="sh", brief="system terminal")
-    @checks.is_owner()
+    @commands.is_owner()
     async def run_shell(self, ctx, *, command: str):
         command = self.clean(command)
 
@@ -331,12 +331,12 @@ class Debug:
 
     # Expression inspection group
     @commands.group(name="inspect", brief="inspect an expression", invoke_without_command=True)
-    @checks.is_owner()
+    @checks.is_developer()
     async def inspect_group(self, ctx, *, expression: str):
         await ctx.invoke(self.inspect_debug, code=expression)
 
     @inspect_group.command(name="debug", brief="inspect an eval result")
-    @checks.is_owner()
+    @checks.is_developer()
     async def inspect_debug(self, ctx, *, code: str):
         source = self.clean(code)
 
@@ -364,7 +364,7 @@ class Debug:
             await ctx.send(await self.check_length(self.get_info(result)))
 
     @inspect_group.command(name="run", brief="inspect an exec result")
-    @checks.is_owner()
+    @checks.is_developer()
     async def inspect_run(self, ctx, *, code: str):
         source = "async def __coro():\n  " + "\n  ".join(self.clean(code).split("\n"))
 
