@@ -57,7 +57,7 @@ _DEBUG = any(arg.lower() == "debug" for arg in sys.argv)
 
 # Logging setup
 logger.set_level(debug=_DEBUG)
-log = logger.get_logger()
+log = None
 
 class Builtin:
     def __init__(self, bot):
@@ -129,7 +129,7 @@ class Builtin:
             else:
                 await self.bot.post_reaction(ctx.message, success=True)
     @manage_cogs.command(name="list", brief="list loaded cogs")
-    @checks.is_owner()
+    @checks.is_developer()
     async def list_cogs(self, ctx, name: str = None):
         if name is None:
             await ctx.send(f"Currently loaded cogs:\n{' '.join('`' + cog_name + '`' for cog_name in self.bot.extensions)}" if len(self.bot.extensions) > 0 else "No cogs loaded")
@@ -194,6 +194,10 @@ class SnakeBot(commands.Bot):
 
         # Load database engine
         self.db = sql.SQL(db_name="snake", db_username=os.environ.get("SNAKE_DB_USERNAME"), db_password=os.environ.get("SNAKE_DB_PASSWORD"))
+        logger.set_database(self.db)
+
+        global log
+        log = logger.get_logger()
 
         self.boot_time = datetime.utcnow()
 
@@ -281,7 +285,7 @@ class SnakeBot(commands.Bot):
         default_prefix = self.config["General"]["default_prefix"]
         channel = message.channel
 
-        if isinstance(channel, discord.abc.PrivateChannel):
+        if not hasattr(channel, "guild"):
             return default_prefix
 
         else:
@@ -340,32 +344,6 @@ class SnakeBot(commands.Bot):
         resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
         print(f"Resumed as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nResumed in {paint(resumed_after, 'cyan')}")
 
-    # Coommand tossed an error
-    async def on_command_error(self, ctx, error):
-        if isinstance(error, commands.NoPrivateMessage):
-            await ctx.send("\N{WARNING SIGN} You cannot use that command in a private channel")
-
-        elif isinstance(error, commands.CommandNotFound):
-            await self.post_reaction(ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}", quiet=True)
-
-        elif isinstance(error, commands.DisabledCommand):
-            await ctx.send("\N{WARNING SIGN} That command is disabled")
-
-        elif isinstance(error, commands.CommandOnCooldown):
-            await ctx.send(f"{ctx.author.mention} slow down! Try that again in {error.retry_after:.1f} seconds")
-
-        elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument)):
-            await ctx.send(f"\N{WARNING SIGN} {error}")
-
-        elif isinstance(error, commands.CommandInvokeError):
-            original_name = error.original.__class__.__name__
-            print(f"In {paint(ctx.command.qualified_name, 'b_red')}:")
-            traceback.print_tb(error.original.__traceback__)
-            print(f"{paint(original_name, 'red')}: {error.original}")
-
-        else:
-            print(f"{paint(type(error).__name__, 'b_red')}: {error}")
-
     # Reaction added
     async def on_reaction_add(self, reaction, user):
         if not reaction.me and not reaction.custom_emoji:
@@ -387,7 +365,7 @@ class SnakeBot(commands.Bot):
         return self
 
     def __exit__(self, t, value, tb):
-        print(t, value, tb)
+        print("Exiting..")
 
         return True
 

@@ -37,7 +37,7 @@ from discord.ext import commands
 from .utils import checks
 from .utils.logger import get_logger
 
-logger = get_logger()
+log = get_logger()
 
 MAGIC_OPERATOR_NAMES = [
     (("__eq__",), "=="),

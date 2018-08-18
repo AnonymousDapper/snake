@@ -20,21 +20,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-__all__ = ["Tag", "Permission", "User", "Blacklist", "Whitelist", "TagVariable", "Message", "Command", "Prefix", "SQL"]
+__all__ = ["Tag", "Permission", "User", "Blacklist", "Whitelist", "TagVariable", "Message", "MessageChange", "Command", "ErrorLog", "Prefix", "SQL"]
 
 import traceback
 from contextlib import contextmanager
 
-from sqlalchemy import ForeignKey, Integer, BigInteger, String, Date, Boolean, Column, create_engine
+from sqlalchemy import ForeignKey, Integer, BigInteger, String, DateTime, Boolean, Column, create_engine
 
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, sessionmaker
 from sqlalchemy.orm.attributes import flag_modified
 
-from .logger import get_logger
-
-logger = get_logger()
+# Can't import logger here because logger:PostgresHandler refers to ErrorLog and causes import loop
 
 Base = declarative_base()
 
@@ -43,12 +41,12 @@ Base = declarative_base()
 class Tag(Base):
     __tablename__ = "tags"
 
-    name = Column(String(50), primary_key=True)
+    name = Column(String(50), primary_key=True, unique=True)
     author_id = Column(BigInteger, ForeignKey("users.id"))
     author = relationship("User", back_populates="tags")
     content = Column(String(2000))
     uses = Column(Integer)
-    timestamp = Column(String)
+    timestamp = Column(DateTime)
 
     def __repr__(self):
         return f"<Tag(name='{self.name}', author_id={self.author_id}, uses={self.uses}, timestamp='{self.timestamp}')>"
@@ -70,13 +68,15 @@ class Permission(Base):
 class User(Base):
     __tablename__ = "users"
 
-    id = Column(BigInteger, primary_key=True)
+    id = Column(BigInteger, primary_key=True, unique=True)
     name = Column(String(40))
     bot = Column(Boolean)
     discrim = Column(String(4))
     permissions = relationship("Permission", back_populates="user", cascade="all, delete, delete-orphan")
     messages = relationship("Message", back_populates="author", cascade="all, delete, delete-orphan")
     tags = relationship("Tag", back_populates="author", cascade="all, delete, delete-orphan")
+    commands = relationship("Command", back_populates="user", cascade="all, delete, delete-orphan")
+    changed_messages = relationship("MessageChange", back_populates="author", cascade="all, delete, delete-orphan")
 
     def __repr__(self):
         return f"<User(id={self.id}, name='{self.name}', bot={self.bot}, discrim='{self.discrim}', permissions={self.permissions}, messages={self.messages}, tags={self.tags})>"
@@ -112,7 +112,7 @@ class Whitelist(Base):
 class TagVariable(Base):
     __tablename__ = "tag_values"
 
-    tag_name = Column(String(50), primary_key=True)
+    tag_name = Column(String(50), primary_key=True, unique=True)
     data = Column(JSONB) # JSONb as key:value pairs
 
     def __repr__(self):
@@ -121,27 +121,63 @@ class TagVariable(Base):
 class Message(Base):
     __tablename__ = "chat_logs"
 
-    pk = Column(Integer, primary_key=True)
-    id = Column(BigInteger)
-    timestamp = Column(String)
+    id = Column(BigInteger, primary_key=True, unique=True)
+    timestamp = Column(DateTime)
     author_id = Column(BigInteger, ForeignKey("users.id"))
     author = relationship("User", back_populates="messages")
+    command = relationship("Command", back_populates="message")
     channel_id = Column(BigInteger)
     guild_id = Column(BigInteger)
     content = Column(String(2000))
-    action = Column(String(15))
 
     def __repr__(self):
-        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, guild_id={self.guild_id}, action='{self.action}')>"
+        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, guild_id={self.guild_id})>"
+
+class MessageChange(Base):
+    __tablename__ = "chat_updates"
+
+    pk = Column(Integer, primary_key=True)
+    id = Column(BigInteger)
+    timestamp = Column(DateTime)
+    author_id = Column(BigInteger, ForeignKey("users.id"))
+    author = relationship("User", back_populates="changed_messages")
+    channel_id = Column(BigInteger)
+    guild_id = Column(BigInteger)
+    content = Column(String(2000))
+    deleted = Column(Boolean)
+
+    def __repr__(self):
+        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, guild_id={self.guild_id}, deleted={self.deleted})>"
 
 class Command(Base):
     __tablename__ = "command_stats"
 
-    command_name = Column(String(40), primary_key=True)
-    uses = Column(Integer)
+    pk = Column(Integer, primary_key=True)
+    message_id = Column(BigInteger, ForeignKey("chat_logs.id"))
+    message = relationship("Message", back_populates="command", uselist=False)
+    command_name = Column(String(40))
+    user_id = Column(BigInteger, ForeignKey("users.id"))
+    user = relationship("User", back_populates="commands")
+    timestamp = Column(DateTime)
+    args = Column(String(2000))
+    errored = Column(Boolean)
 
     def __repr__(self):
-        return f"<Command(command_name='{self.command_name}', uses={self.uses})>"
+        return f"<Command(name='{self.command_name}', errored={self.errored}, message_id={self.message_id})>"
+
+class ErrorLog(Base):
+    __tablename__ = "logged_errors"
+    pk = Column(Integer, primary_key=True, unique=True)
+    level = Column(String)
+    module = Column(String)
+    function = Column(String)
+    filename = Column(String)
+    line_number = Column(Integer)
+    message = Column(String)
+    timestamp = Column(DateTime)
+
+    def __repr__(self):
+        return f"<ErrorLog(level='{self.level}', function='{self.function}', filename='{self.filename}', lineno={self.line_number})>"
 
 class Prefix(Base):
     __tablename__ = "prefixes"
@@ -151,6 +187,8 @@ class Prefix(Base):
 
     def __repr__(self):
         return f"<Prefix(guild_id={self.guild_id}, prefix='{self.prefix}')>"
+
+
 
 
 # Actual adapter class
