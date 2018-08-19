@@ -23,6 +23,7 @@
 import inspect
 import os
 import subprocess
+import textwrap
 
 from contextlib import redirect_stdout, redirect_stderr, suppress
 from functools import partial
@@ -36,8 +37,12 @@ from discord.ext import commands
 
 from .utils import checks
 from .utils.logger import get_logger
+from .utils.math_parser import MathParser
 
 log = get_logger()
+
+# Inspect function implementation source from Jishaku (https://github.com/Gorialis/jishaku)
+# Copyright (c) 2017 Devon R
 
 MAGIC_OPERATOR_NAMES = [
     (("__eq__",), "=="),
@@ -75,10 +80,29 @@ MAGIC_OPERATOR_NAMES = [
     (("__ixor__",), "^=")
 ]
 
+CALC_HELP = """
+    Operators | Explanation || Values | Explanation
+    ----------+-------------++--------+-----------------------
+     X +  X  | add          ||     pi | pi (3.14..)
+     X -  X  | subtract     ||      e | Euler's number
+     X *  X  | multiply     ||    inf | Infinity
+     X /  X  | divide       ||    nan | Not A Number
+     X // X  | floor div    ||    tau | tau (2 * pi)
+     X %  X  | modulo       ||      c | Speed of light (m/s)
+     X ** X  | pow (exp)    ||      g | Standard gravity (m/s²)
+         ~X  | bit invert   ||      a | Avogadro's number
+     X ^  X  | bit xor      ||    atm | Standard atmosphere (Pa)
+     X |  X  | bit or       ||      h | Planck's constant (Js)
+     X &  X  | bit and      ||--------+-------------------------
+     X << X  | bit L shift  || Check out the Python docs for more info
+     X >> X  | bit R shift  || https://docs.python.org/3.7/library/math.html
+    ---------+--------------|| (Most of the math module functions are usable)
+"""
 
 class Debug:
     def __init__(self, bot):
         self.bot = bot
+        self.math_parser = MathParser()
 
         self.NL = "\n" # for embedding in f-strings
 
@@ -133,10 +157,10 @@ class Debug:
                     raw_result = await scope["__coro"]()
 
                 except SyntaxError as e:
-                    return True, f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```"
+                    return True, f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```", None
 
                 except Exception as e:
-                    return True, f"```md\n- {type(e).__name__}: {e}\n```"
+                    return True, f"```md\n- {type(e).__name__}: {e}\n```", None
 
         result_out = str(stdout.getvalue())
         result_err = str(stderr.getvalue())
@@ -203,7 +227,7 @@ class Debug:
 
 
         # Get length
-        if isinstance(result, (str, tuple, list, bytes)):
+        if isinstance(result, (str, tuple, list, bytes, set)):
             info.append(("Length", len(result)))
 
         return f"```prolog\n{data}\n\n======== Data ========\n\n{self.NL.join(f'{a:12.12} = {b}' for a, b in info)}\n```"
@@ -335,6 +359,7 @@ class Debug:
     async def inspect_group(self, ctx, *, expression: str):
         await ctx.invoke(self.inspect_debug, code=expression)
 
+    # Actual command to inspect a debug result
     @inspect_group.command(name="debug", brief="inspect an eval result")
     @checks.is_developer()
     async def inspect_debug(self, ctx, *, code: str):
@@ -363,6 +388,7 @@ class Debug:
         else:
             await ctx.send(await self.check_length(self.get_info(result)))
 
+    # Actual command to inspect a run result
     @inspect_group.command(name="run", brief="inspect an exec result")
     @checks.is_developer()
     async def inspect_run(self, ctx, *, code: str):
@@ -390,6 +416,25 @@ class Debug:
 
         else:
             await ctx.send(await self.check_length(self.get_info(result)))
+
+    # Public math command
+    @commands.group(name="calc", brief="run math calcs", invoke_without_command=True)
+    async def calc_group(self, ctx, *, expression: str):
+        source = self.clean(expression)
+
+        try:
+            result = self.math_parser(source)
+            await ctx.send(await self.check_length(f"```matlab\n{source}\n%%======== Output ========\n{result}\n```"))
+
+        except Exception as e:
+            await ctx.send(f"```diff\n- [{type(e).__name__}]: {e}\n```\n*Hint: use the subcommand 'what' for more info*")
+
+    # Calc reference command
+    @calc_group.command(name="what", brief="reference for calc")
+    async def calc_ref(self, ctx):
+        await ctx.send(f"```prolog\n{textwrap.dedent(CALC_HELP)}\n```")
+
+
 
 # Extension setup
 def setup(bot):

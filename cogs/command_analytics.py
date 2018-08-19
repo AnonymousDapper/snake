@@ -20,11 +20,19 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+import functools
+import platform
+import subprocess
+import traceback
+
 import discord
+import psutil
 
 from discord.ext import commands
+from sqlalchemy import __version__ as sqlalchemy_version
 
 from .utils import sql
+from .utils.colors import paint
 from .utils.logger import get_logger
 
 log = get_logger()
@@ -32,6 +40,8 @@ log = get_logger()
 class Analytics:
     def __init__(self, bot):
         self.bot = bot
+
+        self.pprint_perms = lambda permissions: ", ".join("=".join(map(str, perm)) for perm in list(permissions))
 
     # Logging
 
@@ -202,7 +212,10 @@ class Analytics:
             await ctx.send("\N{WARNING SIGN} You cannot use that command in a private channel")
 
         elif isinstance(error, commands.CommandNotFound):
-            await self.bot.post_reaction(ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}", quiet=True)
+            log.debug("Could not find command '%s' (Author: %s)" % (ctx.command.qualified_name, ctx.author.name))
+
+        elif isinstance(error, commands.CheckFailure):
+            log.debug("Check failed for '%s' (Author: %s)" % (ctx.command.qualified_name, ctx.author.name))
 
         elif isinstance(error, commands.DisabledCommand):
             await ctx.send("\N{WARNING SIGN} That command is disabled")
@@ -212,6 +225,9 @@ class Analytics:
 
         elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument)):
             await ctx.send(f"\N{WARNING SIGN} {error}")
+
+        elif isinstance(error, discord.errors.Forbidden):
+            log.warn(f"{ctx.command.qualified_name} failed: Forbidden. Required | Have ({self.pprint_perms(self.bot.required_permissions)} | {self.pprint_perms(ctx.channel.permissions_for(ctx.guild.me))})")
 
         elif isinstance(error, commands.CommandInvokeError):
             original_name = error.original.__class__.__name__
@@ -229,6 +245,33 @@ class Analytics:
                 if command is not None:
                     command.errored = True
 
+    # Commands
+
+    # Get process info
+    @commands.command(name="info", brief="bot info")
+    async def get_info(self, ctx):
+        last_commit = await self.bot.loop.run_in_executor(None, functools.partial(subprocess.run, "git log --pretty=format:\"%h by %an %ar (%s)\" -n 1", stdout=subprocess.PIPE, shell=True, universal_newlines=True))
+
+        process = psutil.Process()
+        output = discord.Embed(title="Information", color=0xFF8F00, description=f"Latest commit: **{last_commit.stdout}**\n\n[Gitlab Repo](https://gitlab.a-sketchy.site/AnonymousDapper/snake)")
+
+        output.add_field(name="Python", value=f"{platform.python_implementation()} {platform.python_version()}", inline=False)
+        output.add_field(name="Discord.py", value=discord.__version__, inline=False)
+
+        output.add_field(name="System", value=f"{platform.system()} {platform.machine()}", inline=False)
+        output.add_field(name="Kernel", value=platform.release(), inline=False)
+
+        with process.oneshot():
+            proc_mem_info = process.memory_full_info()
+
+            output.add_field(name="Used Memory (uss)", value=f"{int(proc_mem_info.uss / 1024 / 1024)}Mb", inline=False)
+            output.add_field(name="Used Memory (vms)", value=f"{int(proc_mem_info.vms / 1024 / 1024)}Mb", inline=False)
+
+        postgres_major, postgres_minor = self.bot.db.engine.dialect.server_version_info
+        output.add_field(name="PostgreSQL", value=f"{postgres_major}.{postgres_minor}", inline=False)
+        output.add_field(name="Database Driver", value=f"SQLAlchemy {sqlalchemy_version} with {self.bot.db.db_api}", inline=False)
+
+        await ctx.send(embed=output)
 
 
 def setup(bot):

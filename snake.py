@@ -21,11 +21,8 @@
 # SOFTWARE.
 
 import asyncio
-import functools
 import os
-import subprocess
 import sys
-import traceback
 
 from datetime import datetime
 
@@ -34,6 +31,7 @@ import discord
 import toml
 
 from discord.ext import commands
+from pympler.tracker import SummaryTracker
 
 from cogs.utils import logger
 from cogs.utils import permissions
@@ -143,9 +141,14 @@ class Builtin:
 
     @commands.command(name="about", brief="some basic info")
     async def about_command(self, ctx):
-        result = await self.bot.loop.run_in_executor(None, functools.partial(subprocess.run, "git log --pretty=format:\"%h by %an %ar (%s)\" -n 1", stdout=subprocess.PIPE, shell=True, universal_newlines=True))
+        output = discord.Embed(title="About snake", color=0x1DE9B6, description=f"You can invite snake from the [botlist page](https://bots.discord.pw/bots/181584790980526081) or directly [here]({self.bot.invite_url})")
 
-        await ctx.send(f"```md\n# Snake Bot Info\n* Discord.py version {discord.version_info.major}.{discord.version_info.minor}.{discord.version_info.micro}\n* Python version {sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}\n* Latest Commit {result.stdout}\n```")
+        output.set_thumbnail(url=self.bot.user.avatar_url)
+
+        # TODO: support server and whatnot
+
+        await ctx.send(embed=output)
+
 
 class SnakeBot(commands.Bot):
     # Quick method to read toml configs
@@ -158,6 +161,9 @@ class SnakeBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         self.debug = _DEBUG
         self._session_exists = False
+
+        if self.debug:
+            self.tracker = SummaryTracker()
 
         self.loop = asyncio.get_event_loop()
         # TODO: Permissions init here
@@ -218,28 +224,26 @@ class SnakeBot(commands.Bot):
     # Global whitelist/blacklist check
     async def global_check(self, ctx):
         message = ctx.message
-        guild = ctx.guild
         author = ctx.author
         channel = ctx.channel
 
         if author.id in self.config["General"]["owners"]:
             return True
 
-        if await self.check_whitelist("command",
-            (sql.Whitelist.user_id == author.id) |
-            (sql.Whitelist.guild_id == guild.id) |
-            (sql.Whitelist.channel_id == channel.id)
-        ):
+        condition = (sql.Whitelist.user_id == author.id) | (sql.Whitelist.channel_id == channel.id)
+
+        if hasattr(ctx, "guild"):
+            condition |= (sql.Whitelist.guild_id == ctx.guild.id)
+
+        if await self.check_whitelist("command", condition):
 
             return True
 
-        if await self.check_blacklist("command",
-            (sql.Blacklist.user_id == author.id) |
-            (sql.Blacklist.guild_id == guild.id) |
-            (sql.Blacklist.channel_id == channel.id)
-        ):
+        if await self.check_blacklist("command", condition):
 
             return False
+
+        return True
 
     # Misc functions
 
@@ -250,7 +254,7 @@ class SnakeBot(commands.Bot):
 
     # Blacklist
     async def check_blacklist(self, data, condition):
-        print("checking blacklist")
+        log.debug(f"Checking blacklist for {data} ({str(condition)})")
         with self.db.session() as session:
             entry = session.query(sql.Blacklist).filter(condition).first()
 
@@ -266,7 +270,7 @@ class SnakeBot(commands.Bot):
 
     # Whitelist
     async def check_whitelist(self, data, condition):
-        print("checking whitelist")
+        log.debug(f"Checking whitelist for {data} ({str(condition)})")
         with self.db.session() as session:
             entry = session.query(sql.Whitelist).filter(condition).first()
 
@@ -343,6 +347,11 @@ class SnakeBot(commands.Bot):
         self.resume_time = datetime.utcnow()
         resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
         print(f"Resumed as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nResumed in {paint(resumed_after, 'cyan')}")
+
+    # Message handler to block bots
+    async def on_message(self, message):
+        if not message.author.bot:
+            await self.process_commands(message)
 
     # Reaction added
     async def on_reaction_add(self, reaction, user):

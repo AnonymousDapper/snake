@@ -19,3 +19,23 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from discord.ext import commands
+
+from .utils.logger import get_logger
+
+log = get_logger()
+
+class Moderation:
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="clean", brief="remove snake's messages")
+    @commands.cooldown(2, 60, commands.BucketType.guild)
+    async def self_clean(self, ctx):
+        async for message in ctx.history(limit=30, before=ctx.message):
+            if message.author == ctx.guild.me:
+                await message.delete()
+
+def setup(bot):
+    bot.add_cog(Moderation(bot))
