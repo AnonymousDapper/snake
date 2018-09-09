@@ -254,7 +254,6 @@ class SnakeBot(commands.Bot):
 
     # Blacklist
     async def check_blacklist(self, data, condition):
-        log.debug(f"Checking blacklist for {data} ({str(condition)})")
         with self.db.session() as session:
             entry = session.query(sql.Blacklist).filter(condition).first()
 
@@ -270,7 +269,6 @@ class SnakeBot(commands.Bot):
 
     # Whitelist
     async def check_whitelist(self, data, condition):
-        log.debug(f"Checking whitelist for {data} ({str(condition)})")
         with self.db.session() as session:
             entry = session.query(sql.Whitelist).filter(condition).first()
 
@@ -327,12 +325,12 @@ class SnakeBot(commands.Bot):
 
     # Upload long text to personal hastebin
     async def paste_text(self, content):
-        async with self.aio_session.post("http://thinking-rock.a-sketchy.site:8000/documents", data=content, headers={"Content-Type": "application/json"}) as response:
+        async with self.aio_session.post("https://paste.a-sketchy.site/documents", data=content, headers={"Content-Type": "application/json"}) as response:
             if response.status != 200:
                 return f"Could not upload: ({response.status})"
 
             data = await response.json()
-            return f"http://thinking-rock.a-sketchy.site:8000/{data['key']}"
+            return f"https://paste.a-sketchy.site/{data['key']}"
 
     # Discord events
 

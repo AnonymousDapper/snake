@@ -3,3 +3,6 @@ git+https://github.com/Rapptz/discord.py.git@rewrite#egg=discord.py[voice]
 SQLAlchemy
 py-postgresql
 uvloop
+Pillow
+lxml
+bs4

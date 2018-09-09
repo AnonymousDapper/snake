@@ -212,10 +212,10 @@ class Analytics:
             await ctx.send("\N{WARNING SIGN} You cannot use that command in a private channel")
 
         elif isinstance(error, commands.CommandNotFound):
-            log.debug("Could not find command '%s' (Author: %s)" % (ctx.command.qualified_name, ctx.author.name))
+            log.debug("Could not find command '%s' (Author: %s)" % (ctx.invoked_with, ctx.author.name))
 
         elif isinstance(error, commands.CheckFailure):
-            log.debug("Check failed for '%s' (Author: %s)" % (ctx.command.qualified_name, ctx.author.name))
+            log.debug("Check failed for '%s' (Author: %s)" % (ctx.invoked_with, ctx.author.name))
 
         elif isinstance(error, commands.DisabledCommand):
             await ctx.send("\N{WARNING SIGN} That command is disabled")

@@ -81,22 +81,22 @@ MAGIC_OPERATOR_NAMES = [
 ]
 
 CALC_HELP = """
-    Operators | Explanation || Values | Explanation
-    ----------+-------------++--------+-----------------------
-     X +  X  | add          ||     pi | pi (3.14..)
-     X -  X  | subtract     ||      e | Euler's number
-     X *  X  | multiply     ||    inf | Infinity
-     X /  X  | divide       ||    nan | Not A Number
-     X // X  | floor div    ||    tau | tau (2 * pi)
-     X %  X  | modulo       ||      c | Speed of light (m/s)
-     X ** X  | pow (exp)    ||      g | Standard gravity (m/s²)
-         ~X  | bit invert   ||      a | Avogadro's number
-     X ^  X  | bit xor      ||    atm | Standard atmosphere (Pa)
-     X |  X  | bit or       ||      h | Planck's constant (Js)
-     X &  X  | bit and      ||--------+-------------------------
-     X << X  | bit L shift  || Check out the Python docs for more info
-     X >> X  | bit R shift  || https://docs.python.org/3.7/library/math.html
-    ---------+--------------|| (Most of the math module functions are usable)
+    Operators |  Explanation || Values | Explanation
+    ----------+--------------++--------+-----------------------
+     X +  X   | add          ||     pi | pi (3.14..)
+     X -  X   | subtract     ||      e | Euler's number
+     X *  X   | multiply     ||    inf | Infinity
+     X /  X   | divide       ||    nan | Not A Number
+     X // X   | floor div    ||    tau | tau (2 * pi)
+     X %  X   | modulo       ||      c | Speed of light (m/s)
+     X ** X   | pow (exp)    ||      g | Standard gravity (m/s²)
+         ~X   | bit invert   ||      a | Avogadro's number
+     X ^  X   | bit xor      ||    atm | Standard atmosphere (Pa)
+     X |  X   | bit or       ||      h | Planck's constant (Js)
+     X &  X   | bit and      ||--------+-------------------------
+     X << X   | bit L shift  || Check out the Python docs for more info
+     X >> X   | bit R shift  || https://docs.python.org/3.7/library/math.html
+    ----------+--------------|| (Most of the math module functions are usable)
 """
 
 class Debug:
@@ -144,7 +144,7 @@ class Debug:
             return False, result
 
     # Utility function to exec code
-    async def do_exec(self, scope, code, raw=False):
+    async def do_exec(self, scope, code):
         stdout, stderr = StringIO(), StringIO()
         with redirect_stdout(stdout):
             with redirect_stderr(stderr):
@@ -159,7 +159,7 @@ class Debug:
                 except SyntaxError as e:
                     return True, f"```py\n{e.text}\n{'^':>{e.offset}}\n{type(e).__name__}: {e}\n```", None
 
-                except Exception as e:
+                except BaseException as e:
                     return True, f"```md\n- {type(e).__name__}: {e}\n```", None
 
         result_out = str(stdout.getvalue())
@@ -167,11 +167,7 @@ class Debug:
 
         result = f"```py\n{result_out}{f'{self.NL}======== Errors ========{self.NL}{result_err}' if result_err != '' else ''}{f'{self.NL}======== Returned Value ========{self.NL}{repr(raw_result)}' if raw_result is not None else ''}\n```"
 
-        if not raw:
-            return False, result, raw_result
-
-        else:
-            return False, raw_result
+        return False, result, raw_result
 
     # Utility function to scrape information from a code result
     def get_info(self, result):
@@ -406,16 +402,16 @@ class Debug:
             __code=source
         ))
 
-        error, result = await self.do_exec(scope, source, raw=True)
+        error, result, raw = await self.do_exec(scope, source)
 
-        if isinstance(result, discord.Embed):
+        if isinstance(raw, discord.Embed):
             await ctx.send(embed=result)
 
         if error:
             await ctx.send(result)
 
         else:
-            await ctx.send(await self.check_length(self.get_info(result)))
+            await ctx.send(await self.check_length(self.get_info(raw)))
 
     # Public math command
     @commands.group(name="calc", brief="run math calcs", invoke_without_command=True)

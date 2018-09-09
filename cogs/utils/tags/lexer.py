@@ -19,3 +19,24 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+from enum import Enum
+
+class TokenType(Enum):
+    Text = 0
+    Expr = 1
+    LeftParen = 2
+    RightParen = 3
+    LeftBracket = 4
+    RightBracket = 5
+    LeftBrace = 6
+    RightBrace = 7
+    Add = 8
+    Subtract = 9
+    Divide = 10
+    Multiply = 11
+    Modulo = 12
+    GreaterThan = 13
+    LessThan = 14
+    Comma = 15
+
