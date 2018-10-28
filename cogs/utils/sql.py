@@ -20,208 +20,209 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-__all__ = ["Tag", "Permission", "User", "Blacklist", "Whitelist", "TagVariable", "Message", "MessageChange", "Command", "ErrorLog", "Prefix", "SQL"]
+import asyncio
 
-import traceback
 from contextlib import contextmanager
 
-from sqlalchemy import ForeignKey, Integer, BigInteger, String, DateTime, Boolean, Column, create_engine
+from datetime import datetime
 
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
-from sqlalchemy.orm.attributes import flag_modified
+import asyncpg
 
-# Can't import logger here because logger:PostgresHandler refers to ErrorLog and causes import loop
+from .logger import get_logger
 
-Base = declarative_base()
+log = get_logger()
 
-# Class -> table mappings
+USERS_TABLE = """
+CREATE TABLE IF NOT EXISTS users (
+    id BIGINT NOT NULL,
+    name VARCHAR(40),
+    bot BOOLEAN,
+    discrim VARCHAR(4),
 
-class Tag(Base):
-    __tablename__ = "tags"
+    CONSTRAINT users_pk PRIMARY KEY (id),
+    UNIQUE (id)
+);
+"""
 
-    name = Column(String(50), primary_key=True, unique=True)
-    author_id = Column(BigInteger, ForeignKey("users.id"))
-    author = relationship("User", back_populates="tags")
-    content = Column(String(2000))
-    uses = Column(Integer)
-    timestamp = Column(DateTime)
+MESSAGES_TABLE = """
+CREATE TABLE IF NOT EXISTS chat_logs (
+    id BIGINT NOT NULL,
+    timestamp TIMESTAMP,
+    author_id BIGINT,
+    channel_id BIGINT,
+    guild_id BIGINT,
+    content VARCHAR(2000),
 
-    def __repr__(self):
-        return f"<Tag(name='{self.name}', author_id={self.author_id}, uses={self.uses}, timestamp='{self.timestamp}')>"
+    CONSTRAINT chat_logs_pk PRIMARY KEY (id),
+    UNIQUE (id),
 
-class Permission(Base):
-    __tablename__ = "permissions"
+    FOREIGN KEY(author_id) REFERENCES users (id)
+);
+"""
 
-    pk = Column(Integer, primary_key=True)
-    guild_id = Column(BigInteger)
-    channel_id = Column(BigInteger)
-    role_id = Column(BigInteger)
-    user = relationship("User", back_populates="permissions")
-    user_id = Column(BigInteger, ForeignKey("users.id"))
-    bits = Column(BigInteger)
+TAGS_TABLE = """
+CREATE TABLE IF NOT EXISTS tags (
+    name VARCHAR(50) NOT NULL,
+    author_id BIGINT,
+    content VARCHAR(1950),
+    uses INTEGER,
+    timestamp TIMESTAMP,
+    data JSONB,
 
-    def __repr__(self):
-        return f"<Permission(guild_id={self.guild_id}, channel_id={self.channel_id}, user_id={self.user_id}, bits={self.bits})>"
+    CONSTRAINT tags_pk PRIMARY KEY (name),
+    UNIQUE (name),
 
-class User(Base):
-    __tablename__ = "users"
+    FOREIGN KEY(author_id) REFERENCES users (id)
+);
+"""
 
-    id = Column(BigInteger, primary_key=True, unique=True)
-    name = Column(String(40))
-    bot = Column(Boolean)
-    discrim = Column(String(4))
-    permissions = relationship("Permission", back_populates="user", cascade="all, delete, delete-orphan")
-    messages = relationship("Message", back_populates="author", cascade="all, delete, delete-orphan")
-    tags = relationship("Tag", back_populates="author", cascade="all, delete, delete-orphan")
-    commands = relationship("Command", back_populates="user", cascade="all, delete, delete-orphan")
-    changed_messages = relationship("MessageChange", back_populates="author", cascade="all, delete, delete-orphan")
+PREFIX_TABLE = """
+CREATE TABLE IF NOT EXISTS prefixes (
+    id BIGINT NOT NULL,
+    personal BOOLEAN,
+    prefix VARCHAR(32),
 
-    def __repr__(self):
-        return f"<User(id={self.id}, name='{self.name}', bot={self.bot}, discrim='{self.discrim}', permissions={self.permissions}, messages={self.messages}, tags={self.tags})>"
+    CONSTRAINT prefixes_pk PRIMARY KEY (id),
+    UNIQUE (id)
+);
+"""
 
-class Blacklist(Base):
-    __tablename__ = "blacklist"
+PERMISSION_TABLE = """
+CREATE TABLE IF NOT EXISTS permissions (
+    pk SERIAL NOT NULL,
+    guild_id BIGINT,
+    channel_id BIGINT,
+    role_id BIGINT,
+    user_id BIGINT,
+    bits INTEGER,
 
-    pk = Column(Integer, primary_key=True)
-    guild_id = Column(BigInteger)
-    channel_id = Column(BigInteger)
-    role_id = Column(BigInteger)
-    user_id = Column(BigInteger)
+    CONSTRAINT permissions_pk PRIMARY KEY (pk),
+    UNIQUE (pk)
+);
+"""
 
-    data = Column(String)
+BLACKLIST_TABLE = """
+CREATE TABLE IF NOT EXISTS blacklist (
+    pk SERIAL NOT NULL,
+    guild_id BIGINT,
+    channel_id BIGINT,
+    role_id BIGINT,
+    user_id BIGINT,
+    data VARCHAR(2000),
 
-    def __repr__(self):
-        return f"<Blacklist(guild_id={self.guild_id}, channel_id={self.channel_id}, role_id={self.role_id}, user_id={self.user_id})>"
+    CONSTRAINT blacklist_pk PRIMARY KEY (pk),
+    UNIQUE (pk)
+);
+"""
 
-class Whitelist(Base):
-    __tablename__ = "whitelist"
+WHITELIST_TABLE = """
+CREATE TABLE IF NOT EXISTS whitelist (
+    pk SERIAL NOT NULL,
+    guild_id BIGINT,
+    channel_id BIGINT,
+    role_id BIGINT,
+    user_id BIGINT,
+    data VARCHAR(2000),
 
-    pk = Column(Integer, primary_key=True)
-    guild_id = Column(BigInteger)
-    channel_id = Column(BigInteger)
-    role_id = Column(BigInteger)
-    user_id = Column(BigInteger)
+    CONSTRAINT whitelist_pk PRIMARY KEY (pk),
+    UNIQUE (pk)
+);
+"""
 
-    data = Column(String)
+ERRORS_TABLE = """
+CREATE TABLE IF NOT EXISTS logged_errors (
+    pk SERIAL NOT NULL,
+    level VARCHAR(30),
+    module VARCHAR(2000),
+    function VARCHAR(2000),
+    filename VARCHAR(2000),
+    line INTEGER,
+    message VARCHAR(2000),
+    timestamp TIMESTAMP,
 
-    def __repr__(self):
-        return f"<Whitelist(guild_id={self.guild_id}, channel_id={self.channel_id}, role_id={self.role_id}, user_id={self.user_id})>"
+    CONSTRAINT logged_errors_pk PRIMARY KEY (pk),
+    UNIQUE (pk)
+);
+"""
 
-class TagVariable(Base):
-    __tablename__ = "tag_values"
+STATS_TABLE = """
+CREATE TABLE IF NOT EXISTS command_stats (
+    pk SERIAL NOT NULL,
+    message_id BIGINT,
+    command_name VARCHAR(40),
+    user_id BIGINT,
+    args VARCHAR(2000),
+    errored BOOLEAN,
 
-    tag_name = Column(String(50), primary_key=True, unique=True)
-    data = Column(JSONB) # JSONb as key:value pairs
+    CONSTRAINT command_stats_pk PRIMARY KEY (pk),
+    UNIQUE (pk),
 
-    def __repr__(self):
-        return f"<TagVariable(tag_name='{self.tag_name}, values={self.data})>"
-
-class Message(Base):
-    __tablename__ = "chat_logs"
-
-    id = Column(BigInteger, primary_key=True, unique=True)
-    timestamp = Column(DateTime)
-    author_id = Column(BigInteger, ForeignKey("users.id"))
-    author = relationship("User", back_populates="messages")
-    command = relationship("Command", back_populates="message")
-    channel_id = Column(BigInteger)
-    guild_id = Column(BigInteger)
-    content = Column(String(2000))
-
-    def __repr__(self):
-        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, guild_id={self.guild_id})>"
-
-class MessageChange(Base):
-    __tablename__ = "chat_updates"
-
-    pk = Column(Integer, primary_key=True)
-    id = Column(BigInteger)
-    timestamp = Column(DateTime)
-    author_id = Column(BigInteger, ForeignKey("users.id"))
-    author = relationship("User", back_populates="changed_messages")
-    channel_id = Column(BigInteger)
-    guild_id = Column(BigInteger)
-    content = Column(String(2000))
-    deleted = Column(Boolean)
-
-    def __repr__(self):
-        return f"<Message(id={self.id}, timestamp='{self.timestamp}', author_id={self.author_id}, channel_id={self.channel_id}, guild_id={self.guild_id}, deleted={self.deleted})>"
-
-class Command(Base):
-    __tablename__ = "command_stats"
-
-    pk = Column(Integer, primary_key=True)
-    message_id = Column(BigInteger, ForeignKey("chat_logs.id"))
-    message = relationship("Message", back_populates="command", uselist=False)
-    command_name = Column(String(40))
-    user_id = Column(BigInteger, ForeignKey("users.id"))
-    user = relationship("User", back_populates="commands")
-    timestamp = Column(DateTime)
-    args = Column(String(2000))
-    errored = Column(Boolean)
-
-    def __repr__(self):
-        return f"<Command(name='{self.command_name}', errored={self.errored}, message_id={self.message_id})>"
-
-class ErrorLog(Base):
-    __tablename__ = "logged_errors"
-    pk = Column(Integer, primary_key=True, unique=True)
-    level = Column(String)
-    module = Column(String)
-    function = Column(String)
-    filename = Column(String)
-    line_number = Column(Integer)
-    message = Column(String)
-    timestamp = Column(DateTime)
-
-    def __repr__(self):
-        return f"<ErrorLog(level='{self.level}', function='{self.function}', filename='{self.filename}', lineno={self.line_number})>"
-
-class Prefix(Base):
-    __tablename__ = "prefixes"
-
-    guild_id = Column(BigInteger, primary_key=True)
-    prefix = Column(String(25))
-
-    def __repr__(self):
-        return f"<Prefix(guild_id={self.guild_id}, prefix='{self.prefix}')>"
-
-
-
-
-# Actual adapter class
+    FOREIGN KEY(message_id) REFERENCES chat_logs (id),
+    FOREIGN KEY(user_id) REFERENCES users (id)
+);
+"""
 
 class SQL:
     def __init__(self, *args, **kwargs):
-        do_echo = kwargs.get("echo", False)
-        self.db_name = kwargs.get("db_name")
-        self.db_username = kwargs.get("db_username")
-        self.db_password = kwargs.get("db_password")
-        self.db_api = kwargs.get("db_api", "pypostgresql")
-        self.engine = create_engine(f"postgresql+{self.db_api}://{self.db_username}:{self.db_password}@localhost:5432/{self.db_name}", echo=do_echo)
-        self.Session = sessionmaker(bind=self.engine)
+        self.loop = asyncio.get_event_loop()
 
-        Base.metadata.create_all(self.engine)
+        db_name = kwargs.get("db_name")
+        db_username = kwargs.get("db_username")
+        db_password = kwargs.get("db_password")
 
-    # Helper method to flag an obect as modified to re-commit
-    @staticmethod
-    def flag(obj, type_):
-        flag_modified(obj, type_)
+        self.pool = None
 
-    # Session context manager
-    @contextmanager
-    def session(self):
-        session = self.Session()
+        self.loop.create_task(self._generate_pool(f"postgres://{db_username}:{db_password}@localhost:5432/{db_name}?application_name=snake"))
+        self.loop.create_task(self._setup_tables())
 
-        try:
-            yield session
-            session.commit()
+    async def _generate_pool(self, url, **kwargs):
+        self.pool = await asyncpg.create_pool(dsn=url, **kwargs)
 
-        except:
-            traceback.print_exc()
-            session.rollback()
+    async def _setup_tables(self):
+        await asyncio.sleep(1)
+        async with self.pool.acquire() as conn:
+            for query in (USERS_TABLE, MESSAGES_TABLE, TAGS_TABLE, PREFIX_TABLE, PERMISSION_TABLE,BLACKLIST_TABLE, WHITELIST_TABLE, ERRORS_TABLE, STATS_TABLE):
+                await conn.execute(query)
 
-        finally:
-            session.close()
+    async def close(self):
+        await self.pool.close()
+
+    # Users
+    async def create_user(self, user):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("INSERT INTO users(id, name, bot, discrim) VALUES($1, $2, $3, $4);", user.id, user.name, user.bot, user.discriminator)
+
+    async def update_user(self, user):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("UPDATE users SET name = $1, discrim = $2 WHERE id = $3;", user.name, user.discriminator, user.id)
+
+    async def check_user(self, conn, user):
+        test_user = await conn.fetchrow("SELECT 1 as test FROM users WHERE id = $1;", user.id);
+
+        if test_user is None:
+            await self.create_user(user)
+
+    # Messages
+    async def create_message(self, message):
+        async with self.pool.acquire() as conn:
+            await self.check_user(conn, message.author)
+
+            return await conn.execute("INSERT INTO chat_logs(id, timestamp, author_id, channel_id, guild_id, content) VALUES($1, $2, $3, $4, $5, $6);",
+                message.id, message.created_at, message.author.id, message.channel.id, message.guild.id, message.content)
+
+    # Tags
+    async def create_tag(self, author, timestamp, name, content):
+        async with self.pool.acqure() as conn:
+            await self.check_user(conn, author)
+
+            return await conn.execute("INSERT INTO tags(name, author_id, content, uses, timestamp, data) VALUES($1, $2, $3, $4, $5, $6);",
+                name, author.id, content, 0, timestamp, "{}")
+
+
+
+
+    # Errors
+    async def create_error_report(self, report):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("INSERT INTO logged_errors(level, module, function, filename, line, message, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7);",
+                report.levelname, report.module, report.funcName, report.filename, report.lineno, report.msg, datetime.fromtimestamp(report.created))

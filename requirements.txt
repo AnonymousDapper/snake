@@ -1,7 +1,6 @@
 toml
 git+https://github.com/Rapptz/discord.py.git@rewrite#egg=discord.py[voice]
-SQLAlchemy
-py-postgresql
+asyncpg
 uvloop
 Pillow
 lxml

@@ -64,7 +64,9 @@ class Builtin:
     @commands.command(name="quit", brief="exit bot")
     @checks.is_developer()
     async def quit_command(self, ctx):
-        self.bot.loop.create_task(self.bot.aio_session.close())
+        await self.bot.aio_session.close()
+        await self.bot.db.close()
+
         await self.bot.logout()
 
     @commands.group(name="cog", brief="manage cogs", invoke_without_command=True)
@@ -173,7 +175,7 @@ class SnakeBot(commands.Bot):
         self.socket_log = {}
 
         self.required_permissions = discord.Permissions(permissions=70380609)
-        self.invite_url = discord.utils.oauth_url("181584771510566922", permissions=self.required_permissions)
+        self.invite_url = discord.utils.oauth_url(self.config["General"]["client_id"], permissions=self.required_permissions)
 
         # Load credentials
         credentials = self._read_config("credentials.toml")
@@ -230,20 +232,7 @@ class SnakeBot(commands.Bot):
         if author.id in self.config["General"]["owners"]:
             return True
 
-        condition = (sql.Whitelist.user_id == author.id) | (sql.Whitelist.channel_id == channel.id)
-
-        if hasattr(ctx, "guild"):
-            condition |= (sql.Whitelist.guild_id == ctx.guild.id)
-
-        if await self.check_whitelist("command", condition):
-
-            return True
-
-        if await self.check_blacklist("command", condition):
-
-            return False
-
-        return True
+        return False
 
     # Misc functions
 
@@ -252,49 +241,22 @@ class SnakeBot(commands.Bot):
         log.info("Creating client session for bot")
         self.aio_session = aiohttp.ClientSession()
 
-    # Blacklist
-    async def check_blacklist(self, data, condition):
-        with self.db.session() as session:
-            entry = session.query(sql.Blacklist).filter(condition).first()
-
-            if entry is None:
-                return False
-
-            else:
-                if isinstance(data, str):
-                    return entry.data == data
-
-                elif isinstance(data, list):
-                    return entry.data in data
-
-    # Whitelist
-    async def check_whitelist(self, data, condition):
-        with self.db.session() as session:
-            entry = session.query(sql.Whitelist).filter(condition).first()
-
-            if entry is None:
-                return False
-
-            else:
-                if isinstance(data, str):
-                    return entry.data == data
-
-                elif isinstance(data, list):
-                    return entry.data in data
-
     # Get prefix for guild or default
     async def get_prefix(self, message):
         default_prefix = self.config["General"]["default_prefix"]
-        channel = message.channel
 
-        if not hasattr(channel, "guild"):
-            return default_prefix
+        return default_prefix
 
-        else:
-            guild = channel.guild
-            with self.db.session() as session:
-                prefix_query = session.query(sql.Prefix).filter_by(guild_id=guild.id).first()
-                return default_prefix if prefix_query is None else prefix_query.prefix
+        # channel = message.channel
+
+        # if not hasattr(channel, "guild"):
+        #     return default_prefix
+
+        # else:
+        #     guild = channel.guild
+        #     with self.db.session() as session:
+        #         prefix_query = session.query(sql.Prefix).filter_by(guild_id=guild.id).first()
+        #         return default_prefix if prefix_query is None else prefix_query.prefix
 
     # Post a reaction indicating command status
     async def post_reaction(self, message, emoji=None, **kwargs):

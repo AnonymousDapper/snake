@@ -30,8 +30,9 @@ from functools import partial
 from io import StringIO
 from types import BuiltinFunctionType
 
+import asyncpg
+
 import discord
-import sqlalchemy
 
 from discord.ext import commands
 
@@ -173,7 +174,7 @@ class Debug:
     def get_info(self, result):
         data = repr(result)
 
-        info = []
+        info =  []
 
         info.append(("Type", type(result).__name__))
         info.append(("Memory", hex(id(result))))
@@ -295,36 +296,25 @@ class Debug:
             sql += ";"
 
         try:
-            results = await self.bot.loop.run_in_executor(None, partial(self.bot.db.engine.execute, sql))
+            async with self.bot.db.pool.acquire() as conn:
+                results = await conn.fetch(sql)
 
-
-        except sqlalchemy.exc.ProgrammingError as e:
-            await ctx.send(f"```diff\n- {e.orig.message}\n```\n{e.orig.details.get('hint', 'Unknown fix')}\n\nDouble check your query:\n```sql\n{e.statement}\n{' ' * (int(e.orig.details.get('position', '0')) - 1)}^\n```")
+        except asyncpg.exceptions.PostgresSyntaxError as e:
+            await ctx.send(f"```diff\n- {e.message}\n```\n\nDouble check your query:\n```sql\n{e.query}\n```")
             return
 
         except Exception as e:
             await ctx.send(f"```diff\n- {type(e).__name__}: {e}\n```")
             return
 
-        if not results.returns_rows:
+        if len(results) == 0:
             await self.bot.post_reaction(ctx.message, success=True)
 
         else:
-            result_list = results.fetchall()
+            # I'm sorry
+            result = f"```md\n# Columns: {', '.join(results[0].keys())}\n# {len(results)} total rows\n\n{self.NL.join('- ' + (', '.join(str(item) for item in arg.values())) for arg in results)}\n```"
 
-            if len(result_list) == 0:
-                await ctx.send("\N{WARNING SIGN} Query returned 0 rows")
-
-            else:
-                row_names = results.keys()
-
-                # format a list of items
-                clr = lambda arr: ", ".join(str(item) for item in arr)
-
-                # f-string to format total result lsit
-                result = f"```md\n# Columns: {', '.join(row_names)}\n# {len(result_list)} total rows\n\n{self.NL.join('- ' + clr(arg) for arg in result_list)}\n```"
-
-                await ctx.send(await self.check_length(result))
+            await ctx.send(await self.check_length(result))
 
     # Run shell commands
     @commands.command(name="sh", brief="system terminal")

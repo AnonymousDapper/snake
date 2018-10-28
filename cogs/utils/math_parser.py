@@ -172,7 +172,7 @@ class MathParser:
         elif isinstance(node, ast.BinOp):
             op_name = type(node.op)
 
-            if op_name  in self.operators:
+            if op_name in self.operators:
                 left_op = node.left
                 right_op = node.right
 

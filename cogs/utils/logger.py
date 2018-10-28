@@ -22,14 +22,13 @@
 
 __all__ = ["get_logger", "set_level", "set_database"]
 
+import asyncio
 import inspect
 import logging
 import os
 
 from datetime import datetime
 from logging import handlers, Handler
-
-from .sql import ErrorLog
 
 # Make sure the log directory exists (and create it if not)
 if not os.path.exists("logs"):
@@ -40,21 +39,12 @@ LOG_LEVEL = logging.INFO
 class PostgresHandler(Handler):
     def __init__(self, db):
         self.db = db
+        self.loop = asyncio.get_event_loop()
+
         super().__init__(logging.WARNING)
 
     def emit(self, record):
-        with self.db.session() as session:
-            error_log = ErrorLog(
-                level=record.levelname,
-                module=record.module,
-                function=record.funcName,
-                filename=record.filename,
-                line_number=record.lineno,
-                message=record.msg,
-                timestamp=datetime.fromtimestamp(record.created)
-            )
-
-            session.add(error_log)
+        self.loop.create_task(self.db.create_error_report(record))
 
 # Handlers
 DATABASE_HANDLER = None # setup on init
