@@ -78,12 +78,13 @@ CREATE TABLE IF NOT EXISTS tags (
 
 PREFIX_TABLE = """
 CREATE TABLE IF NOT EXISTS prefixes (
+    pk SERIAL NOT NULL,
     id BIGINT NOT NULL,
     personal BOOLEAN,
     prefix VARCHAR(32),
 
-    CONSTRAINT prefixes_pk PRIMARY KEY (id),
-    UNIQUE (id)
+    CONSTRAINT prefixes_pk PRIMARY KEY (pk),
+    UNIQUE (pk)
 );
 """
 
@@ -157,7 +158,6 @@ CREATE TABLE IF NOT EXISTS command_stats (
     CONSTRAINT command_stats_pk PRIMARY KEY (pk),
     UNIQUE (pk),
 
-    FOREIGN KEY(message_id) REFERENCES chat_logs (id),
     FOREIGN KEY(user_id) REFERENCES users (id)
 );
 """
@@ -212,12 +212,29 @@ class SQL:
 
     # Tags
     async def create_tag(self, author, timestamp, name, content):
-        async with self.pool.acqure() as conn:
+        async with self.pool.acquire() as conn:
             await self.check_user(conn, author)
 
             return await conn.execute("INSERT INTO tags(name, author_id, content, uses, timestamp, data) VALUES($1, $2, $3, $4, $5, $6);",
                 name, author.id, content, 0, timestamp, "{}")
 
+
+    # Prefixes
+    async def create_prefix(self, item_id, personal, prefix):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("INSERT INTO prefixes(id, personal, prefix) VALUES($1, $2, $3);", item_id, personal, prefix)
+
+    async def edit_prefix(self, item_id, prefix):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("UPDATE prefixes SET prefix = $1 WHERE id = $2;", prefix, item_id)
+
+    async def delete_prefix(self, item_id):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("DELETE FROM prefixes WHERE id = $1;", item_id)
+
+    async def get_prefixes(self, item_id, personal):
+        async with self.pool.acquire() as conn:
+            return await conn.fetch("SELECT prefix FROM prefixes WHERE id = $1 AND personal = $2;", item_id, personal)
 
 
 
@@ -226,3 +243,12 @@ class SQL:
         async with self.pool.acquire() as conn:
             return await conn.execute("INSERT INTO logged_errors(level, module, function, filename, line, message, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7);",
                 report.levelname, report.module, report.funcName, report.filename, report.lineno, report.msg, datetime.fromtimestamp(report.created))
+
+    # Command stats
+    async def create_command_report(self, user, message, command):
+        async with self.pool.acquire() as conn:
+            await self.check_user(user)
+
+            return await conn.execute("INSERT INTO command_stats(message_id, command_name, user_id, args, errored) VALUES($1, $2, $3, $4, $5);",
+                message.id, command.qualified_name, user.id, message.clean_context.split(command.invoked_with)[1].strip(), False)
+

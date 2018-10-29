@@ -232,7 +232,7 @@ class SnakeBot(commands.Bot):
         if author.id in self.config["General"]["owners"]:
             return True
 
-        return False
+        return True
 
     # Misc functions
 
@@ -243,20 +243,22 @@ class SnakeBot(commands.Bot):
 
     # Get prefix for guild or default
     async def get_prefix(self, message):
-        default_prefix = self.config["General"]["default_prefix"]
+        prefixes = [self.config["General"]["default_prefix"]]
 
-        return default_prefix
+        channel = message.channel
 
-        # channel = message.channel
+        user_prefixes = await self.db.get_prefixes(message.author.id, personal=True)
+        prefixes += [prefix["prefix"] for prefix in user_prefixes]
 
-        # if not hasattr(channel, "guild"):
-        #     return default_prefix
+        if hasattr(channel, "guild"):
+            guild_prefixes = await self.db.get_prefixes(channel.guild.id, personal=False)
 
-        # else:
-        #     guild = channel.guild
-        #     with self.db.session() as session:
-        #         prefix_query = session.query(sql.Prefix).filter_by(guild_id=guild.id).first()
-        #         return default_prefix if prefix_query is None else prefix_query.prefix
+            prefixes += [prefix["prefix"] for prefix in guild_prefixes]
+
+
+        print(prefixes)
+
+        return prefixes
 
     # Post a reaction indicating command status
     async def post_reaction(self, message, emoji=None, **kwargs):

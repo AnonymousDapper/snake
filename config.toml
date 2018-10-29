@@ -4,6 +4,15 @@
 
 [General]
   owners=[163521874872107009, 190966952649293824]
+
+  # Wyrm
+  #default_prefix="harken, "
+
+  # Snake
   default_prefix="snake "
-  # client_id="505816067625713664"
+
+  # Wyrm
+  #client_id="505816067625713664"
+
+  # Snake
   client_id="181584771510566922"
