@@ -20,16 +20,13 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-import functools
-import platform
-import subprocess
 import traceback
 
 import discord
-import psutil
+
+from datetime import datetime
 
 from discord.ext import commands
-from sqlalchemy import __version__ as sqlalchemy_version
 
 #from .utils import sql
 from .utils.colors import paint
@@ -57,6 +54,18 @@ class Analytics:
                 else:
                     self.bot.socket_log[t_type] = 1
 
+    # Commands
+    async def log_command_use(self, ctx):
+        await self.bot.db.create_command_report(ctx.author, ctx.message, ctx.command, ctx.invoked_with)
+
+    # Message created
+    async def log_message(self, message):
+        await self.bot.db.create_message(message)
+
+    # Message updated
+    async def log_message_change(self, message, edited):
+        await self.bot.db.edit_message(message, message.edited_at if edited else datetime.now(), edited)
+
     # Listener functions
 
     # Socket event arrived
@@ -65,50 +74,53 @@ class Analytics:
             self.log_socket_data(payload)
 
     # Command was triggered
-    # async def on_command(self, ctx):
-    #     message = ctx.message
-    #     channel = ctx.channel
-    #     author = ctx.author
-    #     destination = None
+    async def on_command(self, ctx):
+        message = ctx.message
+        channel = ctx.channel
+        author = ctx.author
+        destination = None
 
-    #     if not hasattr(channel, "guild"):
-    #         destination = "Private Message"
+        if not hasattr(channel, "guild"):
+            destination = "Private Message"
 
-    #     else:
-    #         destination = f"[{ctx.guild.name} #{channel.name}]"
+        else:
+            destination = f"[{ctx.guild.name} #{channel.name}]"
 
-    #     log.info(f"{destination}: {author.name}: {message.clean_content}")
+        log.info(f"{destination}: {author.name}: {message.clean_content}")
 
-    #     await self.log_command_use(ctx)
+        await self.log_command_use(ctx)
 
     # Message arrived
-    # async def on_message(self, message):
-    #     channel = message.channel
-    #     author = message.author
+    async def on_message(self, message):
+        channel = message.channel
+        author = message.author
 
-    #     if author.bot or (not self.bot.is_ready()):
-    #         return
+        if author.bot or (not self.bot.is_ready()):
+            return
 
-    #     if hasattr(author, "display_name"):
-    #         await self.log_message(message)
+        if hasattr(author, "display_name"):
+            await self.log_message(message)
 
     # Message deleted
-    # async def on_message_delete(self, message):
-    #     channel = message.channel
-    #     author = message.author
-    #     if hasattr(channel, "guild") and hasattr(author, "display_name"):
-    #         await self.log_message_change(message, deleted=True)
+    async def on_message_delete(self, message):
+        channel = message.channel
+        author = message.author
+        if hasattr(channel, "guild") and hasattr(author, "display_name"):
+            await self.log_message_change(message, edited=False)
 
     # Messaged edited
-    # async def on_message_edit(self, old_message, new_message):
-    #     channel = new_message.channel
-    #     author = new_message.author
-    #     if old_message.content != new_message.content:
-    #         if hasattr(channel, "guild") and hasattr(author, "display_name"):
-    #             await self.log_message_change(new_message, deleted=False)
+    async def on_message_edit(self, old_message, new_message):
+        channel = new_message.channel
+        author = new_message.author
+        if old_message.content != new_message.content:
+            if hasattr(channel, "guild") and hasattr(author, "display_name"):
+                await self.log_message_change(new_message, edited=True)
 
     # Coommand tossed an error
     async def on_command_error(self, ctx, error):
+        if ctx.command is not None:
+            await self.bot.db.edit_command_report(ctx.message, True)
+
         if isinstance(error, commands.NoPrivateMessage):
             await ctx.send("\N{WARNING SIGN} You cannot use that command in a private channel")
 

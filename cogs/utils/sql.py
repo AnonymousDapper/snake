@@ -60,6 +60,22 @@ CREATE TABLE IF NOT EXISTS chat_logs (
 );
 """
 
+MESSAGE_UPDATES_TABLE = """
+CREATE TABLE IF NOT EXISTS chat_updates (
+    pk SERIAL NOT NULL,
+    timestamp TIMESTAMP,
+    edit BOOLEAN,
+    message_id BIGINT,
+    content VARCHAR(2000),
+
+    CONSTRAINT chat_updates_pk PRIMARY KEY (pk),
+    UNIQUE (pk),
+
+    FOREIGN KEY(message_id) REFERENCES chat_logs (id)
+);
+"""
+
+
 TAGS_TABLE = """
 CREATE TABLE IF NOT EXISTS tags (
     name VARCHAR(50) NOT NULL,
@@ -181,7 +197,7 @@ class SQL:
     async def _setup_tables(self):
         await asyncio.sleep(1)
         async with self.pool.acquire() as conn:
-            for query in (USERS_TABLE, MESSAGES_TABLE, TAGS_TABLE, PREFIX_TABLE, PERMISSION_TABLE,BLACKLIST_TABLE, WHITELIST_TABLE, ERRORS_TABLE, STATS_TABLE):
+            for query in (USERS_TABLE, MESSAGES_TABLE, MESSAGE_UPDATES_TABLE, TAGS_TABLE, PREFIX_TABLE, PERMISSION_TABLE,BLACKLIST_TABLE, WHITELIST_TABLE, ERRORS_TABLE, STATS_TABLE):
                 await conn.execute(query)
 
     async def close(self):
@@ -196,24 +212,41 @@ class SQL:
         async with self.pool.acquire() as conn:
             return await conn.execute("UPDATE users SET name = $1, discrim = $2 WHERE id = $3;", user.name, user.discriminator, user.id)
 
-    async def check_user(self, conn, user):
-        test_user = await conn.fetchrow("SELECT 1 as test FROM users WHERE id = $1;", user.id);
+    async def check_user(self, user):
+        async with self.pool.acquire() as conn:
+            test_user = await conn.fetchrow("SELECT 1 as test FROM users WHERE id = $1;", user.id);
 
-        if test_user is None:
-            await self.create_user(user)
+            if test_user is None:
+                await self.create_user(user)
+
 
     # Messages
     async def create_message(self, message):
         async with self.pool.acquire() as conn:
-            await self.check_user(conn, message.author)
+            await self.check_user(message.author)
 
             return await conn.execute("INSERT INTO chat_logs(id, timestamp, author_id, channel_id, guild_id, content) VALUES($1, $2, $3, $4, $5, $6);",
                 message.id, message.created_at, message.author.id, message.channel.id, message.guild.id, message.content)
 
+    async def edit_message(self, message, timestamp, edited):
+        async with self.pool.acquire() as conn:
+            await self.check_message(message)
+
+            return await conn.execute("INSERT INTO chat_updates(timestamp, edit, message_id, content) VALUES($1, $2, $3, $4);",
+                timestamp, edited, message.id, message.content if edited else "")
+
+    async def check_message(self, message):
+        async with self.pool.acquire() as conn:
+            test_message = await conn.fetchrow("SELECT 1 as test FROM chat_logs WHERE id = $1;", message.id);
+
+            if test_message is None:
+                await self.create_message(message)
+
+
     # Tags
     async def create_tag(self, author, timestamp, name, content):
         async with self.pool.acquire() as conn:
-            await self.check_user(conn, author)
+            await self.check_user(author)
 
             return await conn.execute("INSERT INTO tags(name, author_id, content, uses, timestamp, data) VALUES($1, $2, $3, $4, $5, $6);",
                 name, author.id, content, 0, timestamp, "{}")
@@ -237,18 +270,24 @@ class SQL:
             return await conn.fetch("SELECT prefix FROM prefixes WHERE id = $1 AND personal = $2;", item_id, personal)
 
 
-
     # Errors
     async def create_error_report(self, report):
         async with self.pool.acquire() as conn:
             return await conn.execute("INSERT INTO logged_errors(level, module, function, filename, line, message, timestamp) VALUES($1, $2, $3, $4, $5, $6, $7);",
                 report.levelname, report.module, report.funcName, report.filename, report.lineno, report.msg, datetime.fromtimestamp(report.created))
 
+
     # Command stats
-    async def create_command_report(self, user, message, command):
+    async def create_command_report(self, user, message, command, invoked_with):
         async with self.pool.acquire() as conn:
             await self.check_user(user)
 
             return await conn.execute("INSERT INTO command_stats(message_id, command_name, user_id, args, errored) VALUES($1, $2, $3, $4, $5);",
-                message.id, command.qualified_name, user.id, message.clean_context.split(command.invoked_with)[1].strip(), False)
+                message.id, command.qualified_name, user.id, message.clean_content.split(invoked_with)[1].strip(), False)
+
+    # Command errors
+    async def edit_command_report(self, message, errored):
+        async with self.pool.acquire() as conn:
+            return await conn.execute("UPDATE command_stats SET errored = $1 WHERE message_id = $2;",
+                errored, message.id)
 

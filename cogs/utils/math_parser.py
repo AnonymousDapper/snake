@@ -47,6 +47,10 @@ class InvalidBinaryOpError(MathParserError):
     def __init__(self, node):
         super().__init__(f"Operation `{type(node.op).__name__}` is unsupported on `{type(node.left).__name__}` and `{type(node.right).__name__}`")
 
+class InvalidCompareOpError(MathParserError):
+    def __init__(self, op):
+        super().__init__(f"Operation `{type(op).__name__}` ({op}) is not a valid comparison operator")
+
 class InvalidUnaryOpError(MathParserError):
     def __init__(self, node):
         super().__init__(f"Operation `{type(node.op).__name__}` is unsupported on `{type(node.operand).__name__}`")
@@ -87,7 +91,14 @@ class MathParser:
         ast.LShift: op.lshift,
         ast.RShift: op.rshift,
 
-        ast.USub: op.neg
+        ast.USub: op.neg,
+
+        ast.Eq: op.eq,
+        ast.NotEq: op.ne,
+        ast.Lt: op.lt,
+        ast.LtE: op.le,
+        ast.Gt: op.gt,
+        ast.GtE: op.ge
     }
 
     # Allowable functions
@@ -160,8 +171,13 @@ class MathParser:
     def run(self, text):
         return self.__call__(text)
 
+    # List chunker for comparison chains
+    def _sequential_chunks(self, arr, n=2):
+        for i in range(0, len(arr)):
+            yield arr[i:i + n]
+
     # Actual parsing here
-    def __parse(self, node):
+    def _parse(self, node):
         log.debug(f"Parsing {ast.dump(node)}")
 
         # We have a plain number
@@ -176,7 +192,7 @@ class MathParser:
                 left_op = node.left
                 right_op = node.right
 
-                return self.operators[op_name](self._MathParser__parse(left_op), self._MathParser__parse(right_op))
+                return self.operators[op_name](self._parse(left_op), self._parse(right_op))
 
             else:
                 raise InvalidBinaryOpError(node)
@@ -186,12 +202,12 @@ class MathParser:
             op_name = type(node.op)
 
             if op_name in self.operators:
-                return self.operators[op_name](self._MathParser__parse(node.operand))
+                return self.operators[op_name](self._parse(node.operand))
 
             else:
                 raise InvalidUnaryOpError(node)
 
-        # loading a name
+        # Loading a name
         elif isinstance(node, ast.Name):
             var_name = node.id.lower()
 
@@ -212,7 +228,7 @@ class MathParser:
             # check/validate positional args
             for arg in node.args:
                 if isinstance(arg, (ast.Name, ast.Num, ast.BinOp, ast.UnaryOp, ast.Call)):
-                    args.append(self._MathParser__parse(arg))
+                    args.append(self._parse(arg))
 
             # check/validate keyword args and run
             if len(node.keywords) == 0:
@@ -229,6 +245,28 @@ class MathParser:
             else:
                 raise MathParserError("Function calls cannot have keyword arguments")
 
+        # Comparison op
+        elif isinstance(node, ast.Compare):
+            ops_list = []
+            for op in node.ops:
+                op_name = type(op)
+
+                if op_name in self.operators:
+                    ops_list.append(self.operators[op_name])
+
+                else:
+                    raise InvalidCompareOpError(op)
+
+            comparators = [self._parse(node.left)] + [self._parse(expr) for expr in node.comparators]
+
+            if len(comparators) != len(ops_list) + 1:
+                raise ParserError("Unbalanced operators and comparators")
+
+            # [ [<lt>, [n_0, n_1]], [<gt>, [n_1, n_2]] ]
+            result = all(data[0](data[1][0], data[1][1]) for data in zip(ops_list, list(self._sequential_chunks(comparators))[:-1]))
+
+            return result
+
         else:
             raise IllegalTokenError(node)
 
@@ -240,4 +278,4 @@ class MathParser:
         except Exception as e:
             raise ParserError(str(e)) from e
 
-        return self._MathParser__parse(expr)
+        return self._parse(expr)

@@ -256,8 +256,6 @@ class SnakeBot(commands.Bot):
             prefixes += [prefix["prefix"] for prefix in guild_prefixes]
 
 
-        print(prefixes)
-
         return prefixes
 
     # Post a reaction indicating command status
@@ -320,7 +318,7 @@ class SnakeBot(commands.Bot):
         if not reaction.me and not reaction.custom_emoji:
             message = reaction.message
 
-            if reaction.emoji == "\N{CLOCKWISE RIGHTWARDS AND LEFTWARDS OPEN CIRCLE ARROWS}":
+            if reaction.emoji == "\N{CLOCKWISE RIGHTWARDS AND LEFTWARDS OPEN CIRCLE ARROWS}" and message.author == user:
                 await self.on_message(message)
 
             elif reaction.emoji == "\N{WASTEBASKET}" and message.author == message.guild.me:
