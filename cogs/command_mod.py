@@ -26,7 +26,7 @@ from .utils.logger import get_logger
 
 log = get_logger()
 
-class Moderation:
+class Moderation(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 

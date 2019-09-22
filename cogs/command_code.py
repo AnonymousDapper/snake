@@ -100,7 +100,7 @@ CALC_HELP = """
     ----------+--------------|| (Most of the math module functions are usable)
 """
 
-class Debug:
+class Debug(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.math_parser = MathParser()

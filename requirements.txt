@@ -5,3 +5,4 @@ uvloop
 Pillow
 lxml
 bs4
+lark-parser

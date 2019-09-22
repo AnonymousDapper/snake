@@ -57,7 +57,7 @@ _DEBUG = any(arg.lower() == "debug" for arg in sys.argv)
 logger.set_level(debug=_DEBUG)
 log = None
 
-class Builtin:
+class Builtin(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 

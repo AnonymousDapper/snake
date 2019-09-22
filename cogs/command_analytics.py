@@ -34,7 +34,7 @@ from .utils.logger import get_logger
 
 log = get_logger()
 
-class Analytics:
+class Analytics(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
