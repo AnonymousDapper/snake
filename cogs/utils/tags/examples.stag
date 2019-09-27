@@ -1,0 +1,43 @@
+1 + 2 - 3 / 4 * 5 % 6 // 7 ^ 8 | 9 & 10 >> 11 << 12 ** 13 == 14 != 15 < 16 <= 17 >= 18 > 19 in 20
+4e5
+3.2e19
+0.0
+"test"
+'test'
+"test'asd'"
+'asd"test'
+0xfaD
+0o123
+0b1010101
+True
+False
+None
+<| a -> a
+<|a->a/2
+<|(a b) -> (a + b) / 2
+[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, *old_list]
+{0:0, 1:1, 2:2, 3:3, **old_dict}
+{0..}
+{0..20}
+{0..20@2}
+{..20}
+{..@8}
+5 if True else None
+(print! "asd")
+4 `mod` 12
+list_a `concat` list_b
+list[1]
+list[1:3]
+list[1:6:2]
+list[:6:2]
+list[::2]
+list[-1:]
+discord.ext
+discord.ext.commands
+[x * 2 for x in (range! 12 2)]
+{(b: a) for (a, b) in old_dict}
+{((str! x): x * 2) for x in {..100@4} when x % 2 == 0}
+[a for x in (get_all! author) when x is not None]
+(δ [*args] args[::-1])
+(print! (δ! 0 1 2 3 4 5 6 7 8 9))
+(⋂_a_b [a b] [*a, *b])
