@@ -21,11 +21,9 @@
 # SOFTWARE.
 
 import traceback
-
-import discord
-
 from datetime import datetime
 
+import discord
 from discord.ext import commands
 
 #from .utils import sql
@@ -69,11 +67,13 @@ class Analytics(commands.Cog):
     # Listener functions
 
     # Socket event arrived
+    @commands.Cog.listener()
     async def on_socket_response(self, payload):
         if self.bot.debug:
             self.log_socket_data(payload)
 
     # Command was triggered
+    @commands.Cog.listener()
     async def on_command(self, ctx):
         message = ctx.message
         channel = ctx.channel
@@ -91,6 +91,7 @@ class Analytics(commands.Cog):
         await self.log_command_use(ctx)
 
     # Message arrived
+    @commands.Cog.listener()
     async def on_message(self, message):
         channel = message.channel
         author = message.author
@@ -98,10 +99,14 @@ class Analytics(commands.Cog):
         if author.bot or (not self.bot.is_ready()):
             return
 
+        if isinstance(channel, discord.channel.DMChannel):
+            return
+
         if hasattr(author, "display_name"):
             await self.log_message(message)
 
     # Message deleted
+    @commands.Cog.listener()
     async def on_message_delete(self, message):
         channel = message.channel
         author = message.author
@@ -109,6 +114,7 @@ class Analytics(commands.Cog):
             await self.log_message_change(message, edited=False)
 
     # Messaged edited
+    @commands.Cog.listener()
     async def on_message_edit(self, old_message, new_message):
         channel = new_message.channel
         author = new_message.author
@@ -117,6 +123,7 @@ class Analytics(commands.Cog):
                 await self.log_message_change(new_message, edited=True)
 
     # Coommand tossed an error
+    @commands.Cog.listener()
     async def on_command_error(self, ctx, error):
         if ctx.command is not None:
             await self.bot.db.edit_command_report(ctx.message, True)
@@ -139,10 +146,13 @@ class Analytics(commands.Cog):
         elif isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument)):
             await ctx.send(f"\N{WARNING SIGN} {error}")
 
-        elif isinstance(error, discord.errors.Forbidden):
-            log.warn(f"{ctx.command.qualified_name} failed: Forbidden. Required | Have ({self.pprint_perms(self.bot.required_permissions)} | {self.pprint_perms(ctx.channel.permissions_for(ctx.guild.me))})")
+        elif isinstance(error, discord.Forbidden):
+            log.warn(f"{ctx.command.qualified_name} failed: Forbidden. Required | Have \n\t({self.pprint_perms(self.bot.required_permissions)} | {self.pprint_perms(ctx.channel.permissions_for(ctx.guild.me))})")
 
         elif isinstance(error, commands.CommandInvokeError):
+            if isinstance(error.original, discord.Forbidden):
+                log.warn(f"{ctx.command.qualified_name} failed: Forbidden. Required | Have \n\t({self.pprint_perms(self.bot.required_permissions)} | {self.pprint_perms(ctx.channel.permissions_for(ctx.guild.me))})")
+
             original_name = error.original.__class__.__name__
             print(f"In {paint(ctx.command.qualified_name, 'b_red')}:")
             traceback.print_tb(error.original.__traceback__)

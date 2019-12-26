@@ -23,22 +23,16 @@
 import asyncio
 import os
 import sys
-
 from datetime import datetime
 
 import aiohttp
 import discord
 import toml
-
-from discord.ext import commands
-from pympler.tracker import SummaryTracker
-
-from cogs.utils import logger
-from cogs.utils import permissions
-from cogs.utils import sql
-from cogs.utils import time, checks
+from cogs.utils import checks, logger, permissions, sql, time
 from cogs.utils.colors import paint
 from cogs.utils.imgur import ImgurAPI
+from discord.ext import commands
+from pympler.tracker import SummaryTracker
 
 # Attempt to load uvloop for improved event loop performance
 try:
@@ -186,14 +180,17 @@ class SnakeBot(commands.Bot):
 
         self.imgur_api = ImgurAPI(client_id=credentials["Imgur"]["client_id"])
 
+        help_cmd = commands.DefaultHelpCommand(
+            command_attrs=dict(hidden=True),
+
+        )
+
         # Init superclass
         super().__init__(
             *args,
             **kwargs,
+            help_command=help_cmd,
             description="\nHsss!\n",
-            help_attrs=dict(hidden=True),
-            command_not_found=None,
-            command_has_no_subcommand="\N{WARNING SIGN} Command `{1}` doesn't exist in the `{0.name}` group!",
             command_prefix=self.get_prefix
         )
 

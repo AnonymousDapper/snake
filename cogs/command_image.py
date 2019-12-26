@@ -21,14 +21,12 @@
 # SOFTWARE.
 
 import re
-
 from datetime import datetime
 from random import choice
-from urllib.parse import quote_plus, quote
+from urllib.parse import quote, quote_plus
 
 import aiohttp
 import discord
-
 from bs4 import BeautifulSoup as b_soup
 from discord.ext import commands
 from PIL import ImageColor

@@ -19,3 +19,26 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
+
+import discord
+from discord.ext import commands
+
+from .utils.logger import get_logger
+
+log = get_logger()
+
+class Misc(commands.Cog):
+    def __init__(self, bot):
+        self.bot = bot
+
+    @commands.command(name="lewd-alert", brief="print alert about lewd activities")
+    @commands.guild_only()
+    async def lewd_alert(self, ctx, *participants: discord.Member):
+        await ctx.send(f"**Lewd Alert**: A *lewd*, *lascivious*, and likely *immoral* act has occured in __{ctx.guild.name}__ #{ctx.channel.name}. Participating individuals include {', '.join(f'`{participant.display_name}`' for participant in participants)}.\nThis incident will be reported.")
+
+        # Lewd Alert: A lewd, lascivious, and possibly immoral act has occured in Discord Bots <#110373943822540800>. Individuals reported as participating in such debauchery include Julia, lewd-alert as a service.
+    #This incident will be recorded.
+
+
+def setup(bot):
+    bot.add_cog(Misc(bot))

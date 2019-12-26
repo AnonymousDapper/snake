@@ -32,6 +32,7 @@ class Moderation(commands.Cog):
 
     @commands.command(name="clean", brief="remove snake's messages")
     @commands.cooldown(2, 60, commands.BucketType.guild)
+    @commands.guild_only()
     async def self_clean(self, ctx):
         async for message in ctx.history(limit=30, before=ctx.message):
             if message.author == ctx.guild.me:
