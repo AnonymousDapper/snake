@@ -1,84 +1,79 @@
 # MIT License
 #
-# Copyright (c) 2018 AnonymousDapper
+# Copyright (c) 2016-2023 AnonymousDapper
 #
-# Permission is hereby granted
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
+
+
+from __future__ import annotations
 
 import asyncio
-import os
 import sys
-from datetime import datetime
+from pathlib import Path
+from typing import Literal, Optional, Union
 
 import aiohttp
+import arrow
 import discord
-import toml
-from cogs.utils import checks, logger, permissions, sql, time
-from cogs.utils.colors import paint
-from cogs.utils.imgur import ImgurAPI
+import tomli
 from discord.ext import commands
-from pympler.tracker import SummaryTracker
+
+from cogs.utils import logger
+from cogs.utils.colors import Colorize as C
+
+clogger = logger.get_console_logger("snake")
 
 # Attempt to load uvloop for improved event loop performance
 try:
     import uvloop
 
 except ModuleNotFoundError:
-    print("Can't find uvloop, defaulting to standard policy")
+    clogger.warn("Can't find uvloop, defaulting to standard policy")
 
 else:
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
-    print("Using uvloop policy")
+    clogger.info("Using uvloop policy")
 
-_DEBUG = any(arg.lower() == "debug" for arg in sys.argv)
+_DEBUG = any(arg.lower() == "-d" for arg in sys.argv)
 
-# Logging setup
+
+def _read_config(filename):
+    with open(filename, "rb") as cfg:
+        return tomli.load(cfg)
+
+
+_CREDS = _read_config("credentials.toml")
+
 logger.set_level(debug=_DEBUG)
-log = None
+log = logger.get_logger()
+
 
 class Builtin(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: SnakeBot):
         self.bot = bot
 
-    @commands.command(name="quit", brief="exit bot")
-    @checks.is_developer()
+    @commands.command(name="quit", brief="exit bot", aliases=["×"])
+    @commands.is_owner()
     async def quit_command(self, ctx):
         await self.bot.aio_session.close()
-        await self.bot.db.close()
 
-        await self.bot.logout()
+        await self.bot.close()
 
-    @commands.group(name="cog", brief="manage cogs", invoke_without_command=True)
-    @checks.is_developer()
+    @commands.group(name="cog", brief="manage cogs", invoke_without_command=True, aliases=["±"])
+    @commands.is_owner()
     async def manage_cogs(self, ctx, name: str, action: str):
         print("cogs")
 
-    @manage_cogs.command(name="load", brief="load cog")
-    @checks.is_developer()
+    @manage_cogs.command(name="load", brief="load cog", aliases=["^"])
+    @commands.is_owner()
     async def load_cog(self, ctx, name: str):
-        cog_name = "cogs.command_" + name.lower()
+        cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is not None:
-            await self.bot.post_reaction(ctx.message, emoji="\n{SHRUG}")
+            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
 
         else:
             try:
-                self.bot.load_extension(cog_name)
+                await self.bot.load_extension(cog_name)
 
             except Exception as e:
                 await ctx.send(f"Failed to load {name}: [{type(e).__name__}]: `{e}`")
@@ -86,17 +81,17 @@ class Builtin(commands.Cog):
             else:
                 await self.bot.post_reaction(ctx.message, success=True)
 
-    @manage_cogs.command(name="unload", brief="unload cog")
-    @checks.is_developer()
+    @manage_cogs.command(name="unload", brief="unload cog", aliases=["-"])
+    @commands.is_owner()
     async def unload_cog(self, ctx, name: str):
-        cog_name = "cogs.command_" + name.lower()
+        cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
             await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
 
         else:
             try:
-                self.bot.unload_extension(cog_name)
+                await self.bot.unload_extension(cog_name)
 
             except Exception as e:
                 await ctx.send(f"Failed to unload {name}: [{type(e).__name__}]: `{e}`")
@@ -104,85 +99,98 @@ class Builtin(commands.Cog):
             else:
                 await self.bot.post_reaction(ctx.message, success=True)
 
-    @manage_cogs.command(name="reload", brief="reload cog")
-    @checks.is_developer()
+    @manage_cogs.command(name="reload", brief="reload cog", aliases=["*"])
+    @commands.is_owner()
     async def reload_cog(self, ctx, name: str):
-        cog_name = "cogs.command_" + name.lower()
+        cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
             await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
 
         else:
             try:
-                self.bot.unload_extension(cog_name)
-                self.bot.load_extension(cog_name)
+                await self.bot.unload_extension(cog_name)
+                await self.bot.load_extension(cog_name)
 
             except Exception as e:
                 await ctx.send(f"Failed to reload {name}: [{type(e).__name__}]: `{e}`")
 
             else:
                 await self.bot.post_reaction(ctx.message, success=True)
-    @manage_cogs.command(name="list", brief="list loaded cogs")
-    @checks.is_developer()
-    async def list_cogs(self, ctx, name: str = None):
+
+    @manage_cogs.command(name="list", brief="list loaded cogs", aliases=["~"])
+    @commands.is_owner()
+    async def list_cogs(self, ctx, name: Optional[str] = None):
         if name is None:
-            await ctx.send(f"Currently loaded cogs:\n{' '.join('`' + cog_name + '`' for cog_name in self.bot.extensions)}" if len(self.bot.extensions) > 0 else "No cogs loaded")
+            await ctx.send(
+                f"Currently loaded cogs:\n{' '.join('`' + cog_name + '`' for cog_name in self.bot.extensions)}"
+                if len(self.bot.extensions) > 0
+                else "No cogs loaded"
+            )
 
         else:
-            if self.bot.extensions.get("cogs.command_" + name) is None:
+            if self.bot.extensions.get("cogs." + name) is None:
                 await self.bot.post_reaction(ctx.message, failure=True)
 
             else:
                 await self.bot.post_reaction(ctx.message, success=True)
 
-    @commands.command(name="about", brief="some basic info")
-    async def about_command(self, ctx):
-        output = discord.Embed(title="About snake", color=0x1DE9B6, description=f"You can invite snake from the [botlist page](https://bots.discord.pw/bots/181584790980526081) or directly [here]({self.bot.invite_url})")
+    @commands.command(name="sync", brief="sync slash commands", aliases=["§"])
+    @commands.guild_only()
+    @commands.is_owner()
+    async def sync_tree(
+        self,
+        ctx,
+        guilds: commands.Greedy[discord.Object],
+        spec: Optional[Literal["~", "*", "^"]] = None,
+    ):
+        if not guilds:
+            if spec == "~":
+                synced = await self.bot.tree.sync(guild=ctx.guild)
+            elif spec == "*":
+                self.bot.tree.copy_global_to(guild=ctx.guild)
+                synced = await self.bot.tree.sync(guild=ctx.guild)
+            elif spec == "^":
+                self.bot.tree.clear_commands(guild=ctx.guild)
+                await self.bot.tree.sync(guild=ctx.guild)
+                synced = []
+            else:
+                synced = await self.bot.tree.sync()
 
-        output.set_thumbnail(url=self.bot.user.avatar_url)
+            await ctx.send(
+                f"Synced {len(synced)} commands {'globally' if spec is None else 'to ' + ctx.guild.name}"
+            )
+            return
 
-        # TODO: support server and whatnot
+        ret = 0
+        for guild in guilds:
+            try:
+                await self.bot.tree.sync(guild=guild)
+            except discord.HTTPException:
+                pass
+            else:
+                ret += 1
 
-        await ctx.send(embed=output)
+        await ctx.send(f"Synced global tree to {ret}/{len(guilds)}.")
 
 
 class SnakeBot(commands.Bot):
-    # Quick method to read toml configs
-    @staticmethod
-    def _read_config(filename):
-        with open(filename, "r", encoding="utf-8") as cfg:
-            return toml.load(cfg)
-
-    # Main init
     def __init__(self, *args, **kwargs):
         self.debug = _DEBUG
-        self._session_exists = False
-
-        if self.debug:
-            self.tracker = SummaryTracker()
-
         self.loop = asyncio.get_event_loop()
-        # TODO: Permissions init here
 
-        # Load config and in-memory storage
-        self.config = self._read_config("config.toml")
-        self.socket_log = {}
+        self.log = clogger
 
-        self.required_permissions = discord.Permissions(permissions=70380609)
-        self.invite_url = discord.utils.oauth_url(self.config["General"]["client_id"], permissions=self.required_permissions)
+        self.config = _read_config("config.toml")
 
         # Load credentials
-        credentials = self._read_config("credentials.toml")
-        self.token = credentials["Discord"]["token"]
+        self.token = _CREDS["Discord"]["token"]
 
         self.start_time = None
         self.resume_time = None
 
-        self.imgur_api = ImgurAPI(client_id=credentials["Imgur"]["client_id"])
-
         help_cmd = commands.DefaultHelpCommand(
             command_attrs=dict(hidden=True),
-
         )
 
         # Init superclass
@@ -191,69 +199,33 @@ class SnakeBot(commands.Bot):
             **kwargs,
             help_command=help_cmd,
             description="\nHsss!\n",
-            command_prefix=self.get_prefix
+            command_prefix=self.get_prefix, # type: ignore
+            intents=discord.Intents.all(),
         )
 
-        # Launch task to initiate HTTP client session
-        self.loop.create_task(self.create_client_session())
+        self.boot_time = arrow.utcnow()
 
-        # Load database engine
-        self.db = sql.SQL(db_name="snake", db_username=os.environ.get("SNAKE_DB_USERNAME"), db_password=os.environ.get("SNAKE_DB_PASSWORD"))
-        logger.set_database(self.db)
-
-        global log
-        log = logger.get_logger()
-
-        self.boot_time = datetime.utcnow()
-
-        # Automatic loading of cogs
-        for filename in os.listdir("cogs/"):
-            if os.path.isfile("cogs/" + filename) and filename.startswith("command_"):
-                name = filename[8:-3]
-                cog_name = "cogs.command_" + name
-
-                try:
-                    self.load_extension(cog_name)
-                except Exception as e:
-                    print(f"Failed to load {paint(name, 'b_red')}: [{type(e).__name__}]: {e}")
-
-        # Load whitelist check
-        self.add_check(self.global_check, call_once=True)
-
-    # Global whitelist/blacklist check
-    async def global_check(self, ctx):
-        message = ctx.message
-        author = ctx.author
-        channel = ctx.channel
-
-        if author.id in self.config["General"]["owners"]:
-            return True
-
-        return True
-
-    # Misc functions
-
-    # Safely create HTTP client session
-    async def create_client_session(self):
-        log.info("Creating client session for bot")
+    async def setup_hook(self):
         self.aio_session = aiohttp.ClientSession()
 
-    # Get prefix for guild or default
-    async def get_prefix(self, message):
-        prefixes = [self.config["General"]["default_prefix"]]
+        await self.add_cog(Builtin(self))
 
-        channel = message.channel
-
-        user_prefixes = await self.db.get_prefixes(message.author.id, personal=True)
-        prefixes += [prefix["prefix"] for prefix in user_prefixes]
-
-        if hasattr(channel, "guild"):
-            guild_prefixes = await self.db.get_prefixes(channel.guild.id, personal=False)
-
-            prefixes += [prefix["prefix"] for prefix in guild_prefixes]
-
-
-        return prefixes
+        for file in Path("cogs/").iterdir():
+            if (
+                file.is_file()
+                and file.suffix == ".py"
+                and not file.stem.startswith("_")
+            ):
+                stem = file.stem
+                try:
+                    await self.load_extension(f"cogs.{stem}")
+                except Exception as e:
+                    self.log.warn(
+                        f"Failed to load cog {C(stem).bright_red()}: [{type(e).__name__}]: {e}",
+                        exc_info=True,
+                    )
+                else:
+                    self.log.info(f"Loaded cog {C(stem).green()}")
 
     # Post a reaction indicating command status
     async def post_reaction(self, message, emoji=None, **kwargs):
@@ -278,64 +250,80 @@ class SnakeBot(commands.Bot):
         try:
             await message.add_reaction(reaction_emoji)
 
-        except Exception as e:
+        except Exception:
             if not kwargs.get("quiet"):
                 await message.channel.send(reaction_emoji)
 
-    # Upload long text to personal hastebin
-    async def paste_text(self, content):
-        async with self.aio_session.post("https://paste.a-sketchy.site/documents", data=content, headers={"Content-Type": "application/json"}) as response:
-            if response.status != 200:
+    async def paste_text(self, files):
+        async with self.aio_session.post(
+            "https://api.mystb.in/rich-paste", data={"files": files}
+        ) as response:
+            if response.status != 201:
+                log.error(
+                    f"Uploading paste failed: {response.status} {response.reason}"
+                )
                 return f"Could not upload: ({response.status})"
 
             data = await response.json()
-            return f"https://paste.a-sketchy.site/{data['key']}"
 
-    # Discord events
+            return f"https://mystb.in/{data['id']}"
 
-    # Bot is ready
+    async def get_prefix(self, message):
+        prefixes = [self.config["General"]["default_prefix"]]
+
+        if message.author.id in self.config["General"]["owners"]:
+            prefixes += ["s", "Σ", "ß"]
+
+        return prefixes
+
     async def on_ready(self):
-        self.start_time = datetime.utcnow()
-        boot_duration = time.get_elapsed_time(self.boot_time, self.start_time)
-        print(f"Logged in as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nLoaded in {paint(boot_duration, 'cyan')}")
+        self.start_time = arrow.utcnow()
+        boot_duration = self.start_time.humanize(self.boot_time)
 
-    # Bot is resumed
+        self.log.info(
+            f"Logged in as {C(self.user.name).yellow()}{C(' DEBUG MODE').bright_magenta() if self.debug else ''}\nLoaded {C(boot_duration).cyan()}"
+        )
+
     async def on_resume(self):
-        self.resume_time = datetime.utcnow()
-        resumed_after = time.get_elapsed_time(self.start_time, self.resume_time)
-        print(f"Resumed as {paint(self.user.name, 'green')}#{paint(self.user.discriminator, 'yellow')}{paint(' DEBUG MODE', 'b_magenta') if self.debug else ''}\nResumed in {paint(resumed_after, 'cyan')}")
+        self.resume_time = arrow.utcnow()
+        boot_duration = self.resume_time.humanize(
+            self.start_time,
+        )
+
+        self.log.info(
+            f"Resumed as {C(self.user.name).yellow()}{C(' DEBUG MODE').bright_magenta() if self.debug else ''}\Resumed {C(boot_duration).cyan()}"
+        )
 
     # Message handler to block bots
-    async def on_message(self, message):
+    async def on_message(self, message: discord.Message):
         if not message.author.bot:
             await self.process_commands(message)
 
     # Reaction added
-    async def on_reaction_add(self, reaction, user):
-        if not reaction.me and not reaction.custom_emoji:
+    async def on_reaction_add(
+        self, reaction: discord.Reaction, user: Union[discord.User, discord.Member]
+    ):
+        if user != self.user and not reaction.is_custom_emoji():
             message = reaction.message
 
-            if reaction.emoji == "\N{CLOCKWISE RIGHTWARDS AND LEFTWARDS OPEN CIRCLE ARROWS}" and message.author == user:
+            if (
+                reaction.emoji
+                == "\N{CLOCKWISE RIGHTWARDS AND LEFTWARDS OPEN CIRCLE ARROWS}"
+                and message.author == user
+            ):
                 await self.on_message(message)
 
-            elif reaction.emoji == "\N{WASTEBASKET}" and message.author == message.guild.me:
+            elif (
+                reaction.emoji == "\N{WASTEBASKET}\N{VARIATION SELECTOR-16}"
+                and message.author == self.user
+            ):
                 await message.delete()
 
-    # Magic methods for fun code
-    def __enter__(self):
-        if self.is_ready():
-            raise RuntimeError("SnakeBot already started")
 
-        self.add_cog(Builtin(self))
-
-        return self
-
-    def __exit__(self, t, value, tb):
-        print("Exiting..")
-
-        return True
-
-
-# Running
-with SnakeBot() as bot:
+def main():
+    bot = SnakeBot()
     bot.run(bot.token)
+
+
+if __name__ == "__main__":
+    main()

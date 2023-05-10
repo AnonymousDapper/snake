@@ -1,18 +1,12 @@
 [Format]
   utc_time="%a %B %d, %Y, %H:%M:%S UTC"
-  msg_time="%Y-%m-%d %H:%M%S"
+  msg_time="%Y-%m-%d %H:%M:%S"
 
 [General]
-  owners=[163521874872107009, 190966952649293824]
-
-  # Wyrm
-  #default_prefix="harken, "
+  owners=[163521874872107009]
 
   # Snake
   default_prefix="snake "
-
-  # Wyrm
-  #client_id="505816067625713664"
 
   # Snake
   client_id="181584771510566922"

@@ -1,34 +1,14 @@
 # MIT License
 #
-# Copyright (c) 2018 AnonymousDapper
+# Copyright (c) 2016-2023 AnonymousDapper
 #
-# Permission is hereby granted
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-#
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-#
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
 
-__all__ = ["get_logger", "set_level", "set_database"]
+__all__ = "get_logger", "set_level"
 
-import asyncio
 import inspect
 import logging
 import os
-
-from datetime import datetime
-from logging import handlers, Handler
+from logging import handlers
 
 # Make sure the log directory exists (and create it if not)
 if not os.path.exists("logs"):
@@ -36,23 +16,46 @@ if not os.path.exists("logs"):
 
 LOG_LEVEL = logging.INFO
 
-class PostgresHandler(Handler):
-    def __init__(self, db):
-        self.db = db
-        self.loop = asyncio.get_event_loop()
 
-        super().__init__(logging.WARNING)
+class ConsoleFormatter(logging.Formatter):
+    COLORS = (
+        (logging.DEBUG, "\x1b[97;3m"),
+        (logging.INFO, "\x1b[34m"),
+        (logging.WARNING, "\x1b[93;1m"),
+        (logging.ERROR, "\x1b[31;1m"),
+        (logging.CRITICAL, "\x1b[41;37;1;5m"),
+    )
 
-    def emit(self, record):
-        self.loop.create_task(self.db.create_error_report(record))
+    FORMATS = {
+        level: logging.Formatter(
+            f"\x1b[30;1m%(asctime)s\x1b[0m {color}%(levelname)-8s\x1b[0m \x1b[35m%(name)s:%(funcName)s\x1b[0m %(message)s",
+            "%Y-%m-%d %H:%M:%S",
+        )
+        for level, color in COLORS
+    }
+
+    def format(self, record):
+        formatter = self.FORMATS.get(record.levelno, self.FORMATS[logging.DEBUG])
+
+        record.exc_text = None
+        return formatter.format(record)
+
 
 # Handlers
-DATABASE_HANDLER = None # setup on init
-FILE_HANDLER = handlers.RotatingFileHandler(filename="logs/snake.log", maxBytes=5 * 1024 * 1024, backupCount=3) # Max size of 5Mb per-file, with 3 past files
-LOG_FORMATTER = logging.Formatter("%(asctime)s %(levelname)s | [In module %(module)s -> function %(funcName)s] (%(filename)s:%(lineno)s) | %(message)s")
+FILE_HANDLER = handlers.RotatingFileHandler(
+    filename="logs/snake.log", maxBytes=1 * 1024 * 1024, backupCount=3
+)  # Max size of 1Mb per-file, with 3 past files
+FILE_FORMATTER = logging.Formatter(
+    "%(asctime)s %(levelname)s | [%(module)s.%(funcName)s()] (%(filename)s:%(lineno)s)\n\t| %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+STREAM_HANDLER = logging.StreamHandler()
+
 
 FILE_HANDLER.setLevel(logging.NOTSET)
-FILE_HANDLER.setFormatter(LOG_FORMATTER)
+FILE_HANDLER.setFormatter(FILE_FORMATTER)
+STREAM_HANDLER.setFormatter(ConsoleFormatter())
+
 
 # Set log level according to debug status (call once at init)
 def set_level(debug=False):
@@ -60,11 +63,6 @@ def set_level(debug=False):
 
     LOG_LEVEL = logging.DEBUG if debug else logging.INFO
 
-# Setup database handler
-def set_database(db):
-    global DATABASE_HANDLER
-
-    DATABASE_HANDLER = PostgresHandler(db)
 
 # Special logger that runs for each module it's called in
 def get_logger():
@@ -77,10 +75,19 @@ def get_logger():
     module_logger.setLevel(LOG_LEVEL)
     module_logger.addHandler(FILE_HANDLER)
 
-    if DATABASE_HANDLER is not None:
-        module_logger.addHandler(DATABASE_HANDLER)
+    severe_stream_handler = logging.StreamHandler()
+    severe_stream_handler.setLevel(logging.ERROR)
+    severe_stream_handler.setFormatter(ConsoleFormatter())
 
     del call_frame
     del call_module
 
     return module_logger
+
+
+def get_console_logger(name: str):
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    logger.addHandler(STREAM_HANDLER)
+
+    return logger

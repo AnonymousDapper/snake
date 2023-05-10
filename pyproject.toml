@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "snake"
+version = "0.1.0"
+description = "Robosnake for discord"
+authors = ["AnonymousDapper <dapper@a-sketchy.site>"]
+license = "MIT"
+readme = "README.md"
+#packages = [{include = "snake.py", from = "../snake"}]
+
+[tool.poetry.scripts]
+bot = "snake:main"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+aiohttp = {extras = ["speedups"], version = "^3.8.4"}
+discord-py = "^2.2.3"
+uvloop = "^0.17.0"
+import-expression = "^1.1.4"
+tomli = "^2.0.1"
+arrow = "^1.2.3"
+
+
+[tool.poetry.group.dev.dependencies]
+black = "^23.3.0"
+isort = "^5.12.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

@@ -1,0 +1,17 @@
+ucs
+inputenc
+amsfonts
+amsthm
+amsmath
+amssymb
+cancel
+textcomp
+euscript
+wasysym
+physics
+tikz-cd
+xcolor
+microtype
+calc
+xparse
+pict2e

@@ -1,8 +1,0 @@
-toml
-discord.py
-asyncpg
-uvloop
-Pillow
-lxml
-bs4
-lark-parser
