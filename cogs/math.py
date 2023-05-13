@@ -48,34 +48,56 @@ class LatexMenu(discord.ui.View):
             if dark:
                 args = ["-alpha", "deactivate", "+negate", *args]
 
-            await self.cog.run_program(Program.Convert, str(self.staging_dir / f"{self.uid}.png"), *args, "-bordercolor", "transparent", "-border", "50", "-flatten", f"PNG32:{image_path}")
+            await self.cog.run_program(
+                Program.Convert,
+                str(self.staging_dir / f"{self.uid}.png"),
+                *args,
+                "-bordercolor",
+                "transparent",
+                "-border",
+                "50",
+                "-flatten",
+                f"PNG32:{image_path}",
+            )
 
         return image_path
 
-
     @discord.ui.button(label="Source")
-    async def get_source(self, interaction: discord.Interaction, button: discord.ui.Button):
-        #await self.check_defer(interaction)
-        await interaction.response.send_message(f"```latex\n{self.source}\n```", ephemeral=True)
+    async def get_source(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        # await self.check_defer(interaction)
+        await interaction.response.send_message(
+            f"```latex\n{self.source}\n```", ephemeral=True
+        )
 
     # @discord.ui.button(label="Redraw")
     # async def do_redraw(self, interaction: discord.Interaction, button: discord.ui.Button):
     #     ...
 
     @discord.ui.button(label="Render Light")
-    async def do_render_light_theme(self, interaction: discord.Interaction, button: discord.ui.Button):
-        #await self.check_defer(interaction)
+    async def do_render_light_theme(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        # await self.check_defer(interaction)
 
         image_path = await self.render_with_theme()
 
-        await interaction.response.send_message(file=discord.File(image_path), ephemeral=True)
+        await interaction.response.send_message(
+            file=discord.File(image_path), ephemeral=True
+        )
 
     @discord.ui.button(label="Render Dark")
-    async def do_render_dark_theme(self, interaction: discord.Interaction, button: discord.ui.Button):
-        #await self.check_defer(interaction)
+    async def do_render_dark_theme(
+        self, interaction: discord.Interaction, button: discord.ui.Button
+    ):
+        # await self.check_defer(interaction)
         image_path = await self.render_with_theme(dark=True)
 
-        await interaction.response.send_message(file=discord.File(image_path), ephemeral=True)
+        await interaction.response.send_message(
+            file=discord.File(image_path), ephemeral=True
+        )
+
 
 class LatexRenderError(RuntimeError):
     ...
@@ -139,7 +161,9 @@ class Math(commands.Cog):
             )
             log.error(f"Subprocess exited non-zero {e.returncode}: {e.output}")
 
-            raise LatexRenderError(f"Exited with non-zero status {e.returncode}: {e.output}")
+            raise LatexRenderError(
+                f"Exited with non-zero status {e.returncode}: {e.output}"
+            )
 
     async def run_program(self, program: Program, *args: str, **kwargs):
         return await self.run_subprocess(str(program.value), args, **kwargs)
@@ -169,12 +193,16 @@ class Math(commands.Cog):
             await ctx.reply(
                 f"\N{WARNING SIGN} Render Failed\n[{type(e).__name__}]: `{e}`",
                 ephemeral=True
-                #file=discord.File("tex/failed.png")
+                # file=discord.File("tex/failed.png")
             )
 
         else:
-            await ctx.send(file=attachment, view=LatexMenu(self, ctx.message.id, latex), reference=ctx.message, mention_author=False)
-
+            await ctx.send(
+                file=attachment,
+                view=LatexMenu(self, ctx.message.id, latex),
+                reference=ctx.message,
+                mention_author=False,
+            )
 
 
 async def setup(bot):

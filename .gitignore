@@ -16,3 +16,4 @@ logs/
 pyrightconfig.json
 tex/staging/*
 credentials.toml
+snake.db

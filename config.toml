@@ -1,12 +1,11 @@
 [Format]
-  utc_time="%a %B %d, %Y, %H:%M:%S UTC"
-  msg_time="%Y-%m-%d %H:%M:%S"
+    utc_time="%a %B %d, %Y, %H:%M:%S UTC"
+    msg_time="%Y-%m-%d %H:%M:%S"
+
+[SQLite]
+    file_path="snake.db"
 
 [General]
-  owners=[163521874872107009]
-
-  # Snake
-  default_prefix="snake "
-
-  # Snake
-  client_id="181584771510566922"
+    owners=[163521874872107009]
+    default_prefix="snake "
+    client_id="181584771510566922"

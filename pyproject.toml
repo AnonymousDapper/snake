@@ -18,6 +18,9 @@ uvloop = "^0.17.0"
 import-expression = "^1.1.4"
 tomli = "^2.0.1"
 arrow = "^1.2.3"
+aiosqlite = "^0.19.0"
+pillow = "^9.5.0"
+mystbin-py = "^5.1.0"
 
 
 [tool.poetry.group.dev.dependencies]

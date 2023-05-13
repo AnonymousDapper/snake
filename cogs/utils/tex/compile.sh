@@ -1,7 +1,7 @@
 #!/usr/bin/env sh
 cd tex/staging/$1/
 
-timeout 1m pdflatex -no-shell-escape $1.tex > texout.log 2>&1
+timeout 1m xelatex -no-shell-escape $1.tex > texout.log 2>&1
 
 RET=$?
 if [ $RET -eq 0 ];

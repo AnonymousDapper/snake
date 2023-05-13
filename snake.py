@@ -14,11 +14,13 @@ from typing import Literal, Optional, Union
 import aiohttp
 import arrow
 import discord
+import mystbin
 import tomli
 from discord.ext import commands
 
 from cogs.utils import logger
 from cogs.utils.colors import Colorize as C
+from cogs.utils.sql import SQL
 
 clogger = logger.get_console_logger("snake")
 
@@ -54,11 +56,14 @@ class Builtin(commands.Cog):
     @commands.command(name="quit", brief="exit bot", aliases=["×"])
     @commands.is_owner()
     async def quit_command(self, ctx):
+        await self.bot.myst_client.close()
         await self.bot.aio_session.close()
-
+        await self.bot.db.close()
         await self.bot.close()
 
-    @commands.group(name="cog", brief="manage cogs", invoke_without_command=True, aliases=["±"])
+    @commands.group(
+        name="cog", brief="manage cogs", invoke_without_command=True, aliases=["±"]
+    )
     @commands.is_owner()
     async def manage_cogs(self, ctx, name: str, action: str):
         print("cogs")
@@ -183,6 +188,8 @@ class SnakeBot(commands.Bot):
 
         self.config = _read_config("config.toml")
 
+        self.db = SQL(db_file=Path(self.config["SQLite"]["file_path"]))
+
         # Load credentials
         self.token = _CREDS["Discord"]["token"]
 
@@ -199,7 +206,7 @@ class SnakeBot(commands.Bot):
             **kwargs,
             help_command=help_cmd,
             description="\nHsss!\n",
-            command_prefix=self.get_prefix, # type: ignore
+            command_prefix=self.get_prefix,  # type: ignore
             intents=discord.Intents.all(),
         )
 
@@ -207,6 +214,8 @@ class SnakeBot(commands.Bot):
 
     async def setup_hook(self):
         self.aio_session = aiohttp.ClientSession()
+
+        self.myst_client = mystbin.Client(session=self.aio_session)
 
         await self.add_cog(Builtin(self))
 
@@ -239,7 +248,7 @@ class SnakeBot(commands.Bot):
                 reaction_emoji = "\N{CROSS MARK}"
 
             elif kwargs.get("warning"):
-                reaction_emoji = "\N{WARNING SIGN}"
+                reaction_emoji = "\N{WARNING SIGN}\N{VARIATION SELECTOR-16}"
 
             else:
                 reaction_emoji = "\N{NO ENTRY}"
@@ -254,25 +263,11 @@ class SnakeBot(commands.Bot):
             if not kwargs.get("quiet"):
                 await message.channel.send(reaction_emoji)
 
-    async def paste_text(self, files):
-        async with self.aio_session.post(
-            "https://api.mystb.in/rich-paste", data={"files": files}
-        ) as response:
-            if response.status != 201:
-                log.error(
-                    f"Uploading paste failed: {response.status} {response.reason}"
-                )
-                return f"Could not upload: ({response.status})"
-
-            data = await response.json()
-
-            return f"https://mystb.in/{data['id']}"
-
     async def get_prefix(self, message):
         prefixes = [self.config["General"]["default_prefix"]]
 
-        if message.author.id in self.config["General"]["owners"]:
-            prefixes += ["s", "Σ", "ß"]
+        if await self.is_owner(message.author):
+            prefixes += ["s ", "Σ", "ß"]
 
         return prefixes
 
