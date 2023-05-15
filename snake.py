@@ -74,7 +74,9 @@ class Builtin(commands.Cog):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is not None:
-            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+            await self.bot.post_reaction(
+                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
+            )
 
         else:
             try:
@@ -92,7 +94,9 @@ class Builtin(commands.Cog):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
-            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+            await self.bot.post_reaction(
+                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
+            )
 
         else:
             try:
@@ -110,7 +114,9 @@ class Builtin(commands.Cog):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
-            await self.bot.post_reaction(ctx.message, emoji="\N{SHRUG}")
+            await self.bot.post_reaction(
+                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
+            )
 
         else:
             try:
@@ -213,6 +219,8 @@ class SnakeBot(commands.Bot):
         self.boot_time = arrow.utcnow()
 
     async def setup_hook(self):
+        await self.db._setup()
+
         self.aio_session = aiohttp.ClientSession()
 
         self.myst_client = mystbin.Client(session=self.aio_session)

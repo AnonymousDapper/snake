@@ -2,10 +2,7 @@
 #
 # Copyright (c) 2016-2023 AnonymousDapper
 #
-# MIT License
-#
-# Copyright (c) 2016-2023 AnonymousDapper
-#
+
 
 from __future__ import annotations
 

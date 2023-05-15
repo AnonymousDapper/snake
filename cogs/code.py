@@ -15,9 +15,11 @@ from contextlib import redirect_stderr, redirect_stdout, suppress
 from datetime import datetime, timedelta
 from functools import partial
 from io import StringIO
-from types import BuiltinFunctionType
+from sqlite3 import Row
+from types import BuiltinFunctionType  # , FunctionType, MethodType
 from typing import TYPE_CHECKING, Any, Tuple
 
+import aiosqlite
 import discord
 import import_expression as ie
 from discord.ext import commands
@@ -154,6 +156,10 @@ class Code(commands.Cog):
                 except BaseException as e:
                     return True, f"```md\n- {type(e).__name__}: {e}\n```", None
 
+                else:
+                    if inspect.isawaitable(raw_result):
+                        raw_result = await raw_result
+
         result_out = (
             (o := str(stdout.getvalue())) and f"**+ Output +**\n```py\n{o}\n```" or ""
         )
@@ -245,6 +251,36 @@ class Code(commands.Cog):
         if isinstance(result, (str, tuple, list, bytes, set)):
             info.append(("Length", len(result)))
 
+        # klass = type(result)
+
+        # header = f"class {klass.__module__}.{klass.__qualname__}"
+
+        # if len(bases := tuple(filter(lambda c: c is not object, klass.__bases__))) > 0:
+        #     header += f"({', '.join(map(lambda c: c.__qualname__, bases))})"
+
+        # def format_fn_signature(fn: FunctionType | MethodType | BuiltinFunctionType) -> str:
+        #     if isinstance(fn, MethodType):
+        #         msg = format_fn_signature(fn.__func__) # type: ignore
+        #         if inspect.isclass(fn.__self__):
+        #             return f"classmethod | {msg}"
+
+        #         return msg
+
+        #     elif isinstance(fn, BuiltinFunctionType):
+        #         return f"{fn.__name__}{fn.__text_signature__}"
+
+        #     else:
+        #         return f"{fn.__name__}{inspect.signature(fn)}"
+
+        # signature = [f"{header}:"]
+        # members = filter(lambda p: not p[0].startswith("_"), sorted(inspect.getmembers(klass), key=lambda p: 1 if inspect.isroutine(p[1]) else 0))
+        # for name, member in members:
+        #     if isinstance(member, (FunctionType, MethodType, BuiltinFunctionType)):
+        #         signature.append(f"  {format_fn_signature(member)}")
+
+        #     else:
+        #         signature.append(f"  {name} = {member}")
+
         return f"```prolog\n{data}\n\n======== Data ========\n\n{self.NL.join(f'{a:12.12} = {b}' for a, b in info)}\n```"
 
     # Run code in eval mode
@@ -312,6 +348,39 @@ class Code(commands.Cog):
             result = await self.check_length(result)
 
         await ctx.send(result)
+
+    # Run SQL query
+    @commands.command(name="sql", brief="execute sql")
+    @commands.is_owner()
+    async def run_sql(self, ctx: commands.Context, *, query: str):
+        sql = self.clean(query)
+
+        if not sql.endswith(";"):
+            sql += ";"
+
+        try:
+            async with self.bot.db.conn.execute(sql) as cur:
+                cur.row_factory = Row
+                results = list(await cur.fetchall())
+
+        except aiosqlite.OperationalError as e:
+            await ctx.send(
+                f"```diff\n- {e.args[0]}\n```\n\nDouble check your query:\n```sql\n{sql}\n```"
+            )
+            return
+
+        except Exception as e:
+            await ctx.send(f"```diff\n- {type(e).__name__}: {e}\n```")
+            return
+
+        if len(results) == 0:
+            await self.bot.post_reaction(ctx.message, success=True)
+
+        else:
+            # I'm sorry
+            result = f"```md\n# Columns: {', '.join(results[0].keys())}\n# {len(results)} total rows\n\n{self.NL.join('- ' + (', '.join(str(item) for item in tuple(arg))) for arg in results)}\n```"
+
+            await ctx.send(await self.check_length(result))
 
     # Run shell commands
     @commands.command(name="sh", brief="system terminal")
