@@ -62,7 +62,9 @@ class LatexMenu(discord.ui.View):
 
         return image_path
 
-    @discord.ui.button(label="Source")
+    @discord.ui.button(
+        label="Source", style=discord.ButtonStyle.danger, emoji="\N{PAGE FACING UP}"
+    )
     async def get_source(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -75,7 +77,11 @@ class LatexMenu(discord.ui.View):
     # async def do_redraw(self, interaction: discord.Interaction, button: discord.ui.Button):
     #     ...
 
-    @discord.ui.button(label="Render Light")
+    @discord.ui.button(
+        label="Render Light",
+        style=discord.ButtonStyle.primary,
+        emoji="\N{WHITE LARGE SQUARE}",
+    )
     async def do_render_light_theme(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -87,7 +93,11 @@ class LatexMenu(discord.ui.View):
             file=discord.File(image_path), ephemeral=True
         )
 
-    @discord.ui.button(label="Render Dark")
+    @discord.ui.button(
+        label="Render Dark",
+        style=discord.ButtonStyle.secondary,
+        emoji="\N{BLACK LARGE SQUARE}",
+    )
     async def do_render_dark_theme(
         self, interaction: discord.Interaction, button: discord.ui.Button
     ):
@@ -184,8 +194,9 @@ class Math(commands.Cog):
 
     @commands.hybrid_command(name="latex", brief="render latex", aliases=["tex"])
     async def latex_command(self, ctx: commands.Context, *, latex: str):
+        source = self.clean(latex)
         try:
-            image_path = await self.render_latex(str(ctx.message.id), self.clean(latex))
+            image_path = await self.render_latex(str(ctx.message.id), source)
 
             attachment = discord.File(image_path)
 
@@ -199,7 +210,7 @@ class Math(commands.Cog):
         else:
             await ctx.send(
                 file=attachment,
-                view=LatexMenu(self, ctx.message.id, latex),
+                view=LatexMenu(self, ctx.message.id, source),
                 reference=ctx.message,
                 mention_author=False,
             )

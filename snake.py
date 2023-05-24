@@ -20,7 +20,7 @@ from discord.ext import commands
 
 from cogs.utils import logger
 from cogs.utils.colors import Colorize as C
-from cogs.utils.sql import SQL
+from cogs.utils.sql import SQL, Emote
 
 clogger = logger.get_console_logger("snake")
 
@@ -55,7 +55,7 @@ class Builtin(commands.Cog):
 
     @commands.command(name="quit", brief="exit bot", aliases=["×"])
     @commands.is_owner()
-    async def quit_command(self, ctx):
+    async def quit_command(self, ctx: commands.Context):
         await self.bot.myst_client.close()
         await self.bot.aio_session.close()
         await self.bot.db.close()
@@ -65,18 +65,16 @@ class Builtin(commands.Cog):
         name="cog", brief="manage cogs", invoke_without_command=True, aliases=["±"]
     )
     @commands.is_owner()
-    async def manage_cogs(self, ctx, name: str, action: str):
+    async def manage_cogs(self, ctx: commands.Context, name: str, action: str):
         print("cogs")
 
     @manage_cogs.command(name="load", brief="load cog", aliases=["^"])
     @commands.is_owner()
-    async def load_cog(self, ctx, name: str):
+    async def load_cog(self, ctx: commands.Context, name: str):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is not None:
-            await self.bot.post_reaction(
-                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
-            )
+            await self.bot.post_reaction(ctx.message, unknown=True)
 
         else:
             try:
@@ -90,13 +88,11 @@ class Builtin(commands.Cog):
 
     @manage_cogs.command(name="unload", brief="unload cog", aliases=["-"])
     @commands.is_owner()
-    async def unload_cog(self, ctx, name: str):
+    async def unload_cog(self, ctx: commands.Context, name: str):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
-            await self.bot.post_reaction(
-                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
-            )
+            await self.bot.post_reaction(ctx.message, unknown=True)
 
         else:
             try:
@@ -110,13 +106,11 @@ class Builtin(commands.Cog):
 
     @manage_cogs.command(name="reload", brief="reload cog", aliases=["*"])
     @commands.is_owner()
-    async def reload_cog(self, ctx, name: str):
+    async def reload_cog(self, ctx: commands.Context, name: str):
         cog_name = "cogs." + name.lower()
 
         if self.bot.extensions.get(cog_name) is None:
-            await self.bot.post_reaction(
-                ctx.message, emoji="\N{BLACK QUESTION MARK ORNAMENT}"
-            )
+            await self.bot.post_reaction(ctx.message, unknown=True)
 
         else:
             try:
@@ -131,7 +125,7 @@ class Builtin(commands.Cog):
 
     @manage_cogs.command(name="list", brief="list loaded cogs", aliases=["~"])
     @commands.is_owner()
-    async def list_cogs(self, ctx, name: Optional[str] = None):
+    async def list_cogs(self, ctx: commands.Context, name: Optional[str] = None):
         if name is None:
             await ctx.send(
                 f"Currently loaded cogs:\n{' '.join('`' + cog_name + '`' for cog_name in self.bot.extensions)}"
@@ -151,7 +145,7 @@ class Builtin(commands.Cog):
     @commands.is_owner()
     async def sync_tree(
         self,
-        ctx,
+        ctx: commands.Context,
         guilds: commands.Greedy[discord.Object],
         spec: Optional[Literal["~", "*", "^"]] = None,
     ):
@@ -159,7 +153,7 @@ class Builtin(commands.Cog):
             if spec == "~":
                 synced = await self.bot.tree.sync(guild=ctx.guild)
             elif spec == "*":
-                self.bot.tree.copy_global_to(guild=ctx.guild)
+                self.bot.tree.copy_global_to(guild=ctx.guild)  # type: ignore
                 synced = await self.bot.tree.sync(guild=ctx.guild)
             elif spec == "^":
                 self.bot.tree.clear_commands(guild=ctx.guild)
@@ -245,7 +239,9 @@ class SnakeBot(commands.Bot):
                     self.log.info(f"Loaded cog {C(stem).green()}")
 
     # Post a reaction indicating command status
-    async def post_reaction(self, message, emoji=None, **kwargs):
+    async def post_reaction(
+        self, message: discord.Message, emoji: Optional[Emote] = None, **kwargs
+    ):
         reaction_emoji = ""
 
         if emoji is None:
@@ -258,6 +254,9 @@ class SnakeBot(commands.Bot):
             elif kwargs.get("warning"):
                 reaction_emoji = "\N{WARNING SIGN}\N{VARIATION SELECTOR-16}"
 
+            elif kwargs.get("unknown"):
+                reaction_emoji = "\N{BLACK QUESTION MARK ORNAMENT}"
+
             else:
                 reaction_emoji = "\N{NO ENTRY}"
 
@@ -269,9 +268,9 @@ class SnakeBot(commands.Bot):
 
         except Exception:
             if not kwargs.get("quiet"):
-                await message.channel.send(reaction_emoji)
+                await message.channel.send(str(reaction_emoji))
 
-    async def get_prefix(self, message):
+    async def get_prefix(self, message: discord.Message):
         prefixes = [self.config["General"]["default_prefix"]]
 
         if await self.is_owner(message.author):
