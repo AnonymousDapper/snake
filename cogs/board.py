@@ -217,8 +217,10 @@ class Board(commands.Cog):
             )
 
             if msg := await self.bot.db.get_board_message_by_post(board, message):
-                await self.bot.db.update_board_message(msg.message, msg.reacts + 1)
+                msg.reacts = msg.reacts + 1
+                await self.bot.db.update_board_message(msg.message, msg.reacts)
                 await self.edit_board_post(message, msg)
+            return
 
         react = discord.utils.find(
             lambda r: self.compare_emoji(r.emoji, payload.emoji)
@@ -229,8 +231,15 @@ class Board(commands.Cog):
         if not react:
             return
 
-        msg = await self.bot.db.add_board_message(board, message, react)
-        await self.add_board_post(msg)
+        if msg := await self.bot.db.get_board_message(board, message):
+            msg.reacts = msg.reacts + 1
+            await self.bot.db.update_board_message(message, msg.reacts)
+            if post := await self.bot.db.get_board_post(board, message):
+                await self.edit_board_post(post, msg)
+        else:
+            await self.add_board_post(
+                await self.bot.db.add_board_message(board, message, react)
+            )
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
@@ -251,8 +260,11 @@ class Board(commands.Cog):
             )
 
             if msg := await self.bot.db.get_board_message_by_post(board, message):
-                await self.bot.db.update_board_message(msg.message, msg.reacts + 1)
+                msg.reacts = msg.reacts - 1
+                await self.bot.db.update_board_message(msg.message, msg.reacts)
                 await self.edit_board_post(message, msg)
+
+            return
 
         react = discord.utils.find(
             lambda r: self.compare_emoji(r.emoji, payload.emoji), message.reactions
@@ -265,7 +277,8 @@ class Board(commands.Cog):
             return
 
         if react and react.count >= board.threshold:
-            await self.bot.db.update_board_message(message, msg.reacts - 1)
+            msg.reacts = msg.reacts - 1
+            await self.bot.db.update_board_message(message, msg.reacts)
             if post:
                 await self.edit_board_post(post, msg)
 

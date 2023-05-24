@@ -5,7 +5,7 @@ CREATE TABLE boards (
     threshold INTEGER NOT NULL,
     name TEXT NOT NULL,
     emote TEXT NOT NULL
-) STRICT;
+);
 
 CREATE TABLE board_messages (
     message_id INTEGER PRIMARY KEY,
@@ -17,7 +17,7 @@ CREATE TABLE board_messages (
 
     FOREIGN KEY(emote) REFERENCES boards(id)
         ON DELETE CASCADE ON UPDATE NO ACTION
-) STRICT;
+);
 
 CREATE TABLE autoroles (
     role_id INTEGER PRIMARY KEY,
@@ -25,7 +25,7 @@ CREATE TABLE autoroles (
     channel_id INTEGER NOT NULL,
     message_id INTEGER NOT NULL,
     emote TEXT NOT NULL
-) STRICT;
+);
 
 CREATE TABLE posted_board_messages (
     message_id INTEGER PRIMARY KEY,
@@ -33,4 +33,4 @@ CREATE TABLE posted_board_messages (
 
     FOREIGN KEY(message_id) REFERENCES board_messages(message_id)
         ON DELETE CASCADE ON UPDATE NO ACTION
-) STRICT;
+);
