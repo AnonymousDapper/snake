@@ -12,12 +12,11 @@ from typing import TYPE_CHECKING, Optional, cast
 
 import aiosqlite
 import msgspec
-from discord import (Emoji, PartialEmoji, Reaction, Role, StageChannel,
+from discord import (Emoji, Guild, Message, PartialEmoji, Role, StageChannel,
                      TextChannel, Thread)
 
 if TYPE_CHECKING:
     from pathlib import Path
-    from discord import Guild, Message
 
 from .logger import get_logger
 
@@ -96,6 +95,17 @@ class SQL:
                     data[0], guild, cast(Channel, channel), data[2], data[3], emote
                 )
 
+    async def list_boards(self, guild: Guild):
+        async with self.conn.execute(
+            "SELECT id, channel_id, threshold, name, emote FROM boards WHERE guild_id = ?;",
+            (guild.id,),
+        ) as cur:
+            async for row in cur:
+                if channel := guild.get_channel(row[1]):
+                    yield EmoteBoard(
+                        row[0], guild, cast(Channel, channel), row[2], row[3], row[4]
+                    )
+
     async def get_board_raw(
         self, guild_id: int, emote_id: int
     ) -> Optional[RawEmoteBoard]:
@@ -112,7 +122,7 @@ class SQL:
         self, guild: Guild, query: Emote | str
     ) -> Optional[EmoteBoard]:
         async with self.conn.execute(
-            "SELECT id, channel_id, threshold, name, emote FROM boards WHERE guild_id = ? AND (name = '?' OR emote = '?');",
+            "SELECT id, channel_id, threshold, name, emote FROM boards WHERE guild_id = ? AND (name = ? OR emote = ?);",
             (guild.id, str(query), str(query)),
         ) as cur:
             data = await cur.fetchone()
@@ -127,12 +137,16 @@ class SQL:
                     data[4],
                 )
 
-    async def add_board(self, board: EmoteBoard):
+    async def add_board(
+        self, channel: Channel, threshold: int, name: str, emote: Emote
+    ) -> Optional[EmoteBoard]:
         await self.conn.execute(
-            "INSERT INTO boards (guild_id, channel_id, name, emote) VALUES (?, ?, '?', '?');",
-            (board.guild.id, board.channel.id, board.name, str(board.emote)),
+            "INSERT INTO boards (guild_id, channel_id, threshold, name, emote) VALUES(?, ?, ?, ?, ?);",
+            (channel.guild.id, channel.id, threshold, name, str(emote)),
         )
         await self.conn.commit()
+
+        return await self.get_board(channel.guild, emote)
 
     # --> board_messages
     async def get_board_message(
@@ -168,7 +182,7 @@ class SQL:
                 return BoardMessage(board, message, data[2])
 
     async def add_board_message(
-        self, board: EmoteBoard, message: Message, react: Reaction
+        self, board: EmoteBoard, message: Message, reacts: int
     ) -> BoardMessage:
         await self.conn.execute(
             "INSERT INTO board_messages (message_id, channel_id, guild_id, author_id, reacts, emote) VALUES (?, ?, ?, ?, ?, ?);",
@@ -177,14 +191,14 @@ class SQL:
                 message.channel.id,
                 board.guild.id,
                 message.author.id,
-                react.count,
+                reacts,
                 board.id,
             ),
         )
 
         await self.conn.commit()
 
-        return BoardMessage(board, message, react.count)
+        return BoardMessage(board, message, reacts)
 
     async def update_board_message(self, message: Message, reacts: int):
         await self.conn.execute(
@@ -195,9 +209,10 @@ class SQL:
         await self.conn.commit()
 
     # as long as our FK constraints hold, this should cascade and delete from posted_board_messages as well
-    async def remove_board_message(self, message: Message):
+    async def remove_board_message(self, message: Message | int):
         await self.conn.execute(
-            "DELETE FROM board_messages WHERE message_id = ?", (message.id,)
+            "DELETE FROM board_messages WHERE message_id = ?",
+            (isinstance(message, Message) and message.id or message,),
         )
 
         await self.conn.commit()
@@ -252,12 +267,30 @@ class SQL:
             if data and (channel := original.guild.get_channel(data[0])):
                 return await channel.fetch_message(data[1])
 
+    async def find_board_post_by_id_raw(
+        self, original_id: int
+    ) -> Optional[tuple[int, int]]:
+        async with self.conn.execute(
+            """
+            SELECT b.channel_id, pbm.board_message_id
+            FROM board_messages bm
+            JOIN boards b ON bm.emote = b.id
+            JOIN posted_board_messages pbm ON pbm.message_id = bm.message_id
+            WHERE bm.message_id = ?;
+            """,
+            (original_id,),
+        ) as cur:
+            data = await cur.fetchone()
+
+            if data:
+                return data[0], data[1]
+
     # --> reaction roles
     async def add_autorole(
         self, guild: Guild, message: Message, role: Role, react: Emote
     ):
         await self.conn.execute(
-            "INSERT INTO autoroles (role_id, guild_id, channel_id, message_id, emote) VALUES (?, ?, ?, ?, '?');",
+            "INSERT INTO autoroles (role_id, guild_id, channel_id, message_id, emote) VALUES (?, ?, ?, ?, ?);",
             (role.id, guild.id, message.channel.id, message.id, str(react)),
         )
 

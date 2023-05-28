@@ -15,7 +15,6 @@ from contextlib import redirect_stderr, redirect_stdout, suppress
 from datetime import datetime, timedelta
 from functools import partial
 from io import StringIO
-from sqlite3 import Row
 from types import BuiltinFunctionType  # , FunctionType, MethodType
 from typing import TYPE_CHECKING, Any, Tuple
 
@@ -360,7 +359,6 @@ class Code(commands.Cog):
 
         try:
             async with self.bot.db.conn.execute(sql) as cur:
-                cur.row_factory = Row
                 results = list(await cur.fetchall())
 
         except aiosqlite.OperationalError as e:

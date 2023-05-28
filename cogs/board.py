@@ -9,6 +9,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Optional
 
 import discord
+import msgspec
 from discord.ext import commands
 from yarl import URL
 
@@ -20,6 +21,14 @@ if TYPE_CHECKING:
     from ..snake import SnakeBot
 
 log = get_logger()
+
+
+class ReactionEvent(msgspec.Struct):
+    board: EmoteBoard
+    board_message: BoardMessage | None
+    original_msg: discord.Message
+    post_msg: discord.Message | None
+    reacts: int
 
 
 class Board(commands.Cog):
@@ -110,19 +119,19 @@ class Board(commands.Cog):
         return a == b
 
     @staticmethod
-    def get_icon(i: int) -> str:
-        match i:
-            case 0:
-                return "\N{FIRST PLACE MEDAL}"
+    def get_line_header(i: int) -> str:
+        if i <= 2:
+            match i:
+                case 0:
+                    return "\N{FIRST PLACE MEDAL}"
 
-            case 1:
-                return "\N{SECOND PLACE MEDAL}"
+                case 1:
+                    return "\N{SECOND PLACE MEDAL}"
 
-            case 2:
-                return "\N{THIRD PLACE MEDAL}"
+                case 2:
+                    return "\N{THIRD PLACE MEDAL}"
 
-            case _:
-                return "\N{MILITARY MEDAL}\N{VARIATION SELECTOR-16}"
+        return f"\N{BLACK SMALL SQUARE} {i + 1: >3}."
 
     @staticmethod
     async def aioenumerate(iter):
@@ -167,13 +176,18 @@ class Board(commands.Cog):
         embeds.append(self.format_embed(original))
         links = "\n".join(footer)
 
+        if self.compare_emoji(board.emote, "\N{WHITE MEDIUM STAR}"):
+            header = self.format_star_sign(message.reacts)
+        else:
+            header = str(board.emote)
+
         post = await board.channel.send(
-            f"{self.format_star_sign(message.reacts)} **{message.reacts}** | {original.jump_url}\n\n{links}",
+            f"{header} **{message.reacts}** | {original.jump_url}\n\n{links}",
             embeds=embeds,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
-        await post.add_reaction("\N{WHITE MEDIUM STAR}")
+        await post.add_reaction(board.emote)
 
         await self.bot.db.add_board_post(original, post)
 
@@ -192,101 +206,132 @@ class Board(commands.Cog):
         embeds.append(self.format_embed(original))
         links = "\n".join(footer)
 
+        if self.compare_emoji(message.board.emote, "\N{WHITE MEDIUM STAR}"):
+            header = self.format_star_sign(message.reacts)
+        else:
+            header = str(message.board.emote)
+
         post = await post.edit(
-            content=f"{self.format_star_sign(message.reacts)} **{message.reacts}** | {original.jump_url}\n\n{links}",
+            content=f"{header} **{message.reacts}** | {original.jump_url}\n\n{links}",
             embeds=embeds,
             allowed_mentions=discord.AllowedMentions.none(),
         )
 
+    async def calculate_reacts(
+        self,
+        board: EmoteBoard,
+        original: discord.Message,
+        post: Optional[discord.Message],
+    ) -> int:
+        total_reacts = set()
+
+        if react := discord.utils.find(
+            lambda r: self.compare_emoji(r.emoji, board.emote), original.reactions
+        ):
+            total_reacts |= {m.id async for m in react.users() if not m.bot}
+
+            if post and (
+                post_react := discord.utils.find(
+                    lambda r: self.compare_emoji(r.emoji, board.emote), post.reactions
+                )
+            ):
+                total_reacts |= {m.id async for m in post_react.users() if not m.bot}
+
+        return len(total_reacts)
+
+    async def handle_reaction_event(
+        self, payload: discord.RawReactionActionEvent
+    ) -> Optional[ReactionEvent]:
+        original_msg = None
+        post_msg = None
+
+        if payload.member and payload.member.bot:
+            return
+
+        if not (
+            (msg := await self.resolve_message(payload.channel_id, payload.message_id))
+            and msg.guild
+        ):
+            return
+
+        if not (board := await self.bot.db.get_board(msg.guild, payload.emoji)):
+            return
+
+        if msg.channel == board.channel:  # star by proxy
+            if board_message := await self.bot.db.get_board_message_by_post(board, msg):
+                original_msg = board_message.message
+                post_msg = msg
+
+        else:  # direct star
+            if board_message := await self.bot.db.get_board_message(board, msg):
+                original_msg = board_message.message
+                post_msg = await self.bot.db.get_board_post(board, original_msg)
+            else:  # new star
+                original_msg = msg
+
+        if original_msg:  # can't imagine why this would be None
+            react_count = await self.calculate_reacts(board, original_msg, post_msg)
+
+            if board_message:
+                board_message.reacts = react_count
+
+            return ReactionEvent(
+                board, board_message, original_msg, post_msg, react_count
+            )
+
+        else:
+            self.bot.log.error(f"`original` is None ({payload!r})")
+
     @commands.Cog.listener()
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
-        message = await self.resolve_message(payload.channel_id, payload.message_id)
+        if data := await self.handle_reaction_event(payload):
+            board = data.board
+            board_message = data.board_message
+            original_msg = data.original_msg
+            post_msg = data.post_msg
+            react_count = data.reacts
 
-        if not message or not message.guild:
-            return
+            if board_message:
+                await self.bot.db.update_board_message(original_msg, react_count)
+                if post_msg:
+                    await self.edit_board_post(post_msg, board_message)
 
-        board = await self.bot.db.get_board(message.guild, payload.emoji)
+            elif react_count >= board.threshold:
+                board_message = await self.bot.db.add_board_message(
+                    board, original_msg, react_count
+                )
+                await self.add_board_post(board_message)
 
-        if not board:
-            return
-
-        if message.channel == board.channel:
-            react = discord.utils.find(
-                lambda r: self.compare_emoji(r.emoji, payload.emoji),
-                message.reactions,
-            )
-
-            if msg := await self.bot.db.get_board_message_by_post(board, message):
-                msg.reacts = msg.reacts + 1
-                await self.bot.db.update_board_message(msg.message, msg.reacts)
-                await self.edit_board_post(message, msg)
-            return
-
-        react = discord.utils.find(
-            lambda r: self.compare_emoji(r.emoji, payload.emoji)
-            and r.count >= board.threshold,
-            message.reactions,
-        )
-
-        if not react:
-            return
-
-        if msg := await self.bot.db.get_board_message(board, message):
-            msg.reacts = msg.reacts + 1
-            await self.bot.db.update_board_message(message, msg.reacts)
-            if post := await self.bot.db.get_board_post(board, message):
-                await self.edit_board_post(post, msg)
-        else:
-            await self.add_board_post(
-                await self.bot.db.add_board_message(board, message, react)
-            )
+            else:
+                log.debug(
+                    f"Ignoring board reaction under threshold: {board.emote} ({react_count}/{board.threshold})"
+                )
 
     @commands.Cog.listener()
     async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
-        message = await self.resolve_message(payload.channel_id, payload.message_id)
+        if data := await self.handle_reaction_event(payload):
+            board = data.board
+            board_message = data.board_message
+            original_msg = data.original_msg
+            post_msg = data.post_msg
+            react_count = data.reacts
 
-        if not message or not message.guild:
-            return
+            if react_count >= board.threshold:
+                if board_message:
+                    await self.bot.db.update_board_message(original_msg, react_count)
 
-        board = await self.bot.db.get_board(message.guild, payload.emoji)
+                    if post_msg:
+                        await self.edit_board_post(post_msg, board_message)
+                else:
+                    log.error(
+                        f"React count above threshold, but no BoardMessage exists: {original_msg!r}"
+                    )
 
-        if not board:
-            return
+            else:
+                await self.bot.db.remove_board_message(original_msg)
 
-        if message.channel == board.channel:
-            react = discord.utils.find(
-                lambda r: self.compare_emoji(r.emoji, payload.emoji),
-                message.reactions,
-            )
-
-            if msg := await self.bot.db.get_board_message_by_post(board, message):
-                msg.reacts = msg.reacts - 1
-                await self.bot.db.update_board_message(msg.message, msg.reacts)
-                await self.edit_board_post(message, msg)
-
-            return
-
-        react = discord.utils.find(
-            lambda r: self.compare_emoji(r.emoji, payload.emoji), message.reactions
-        )
-
-        post = await self.bot.db.get_board_post(board, message)
-        msg = await self.bot.db.get_board_message(board, message)
-
-        if not msg:
-            return
-
-        if react and react.count >= board.threshold:
-            msg.reacts = msg.reacts - 1
-            await self.bot.db.update_board_message(message, msg.reacts)
-            if post:
-                await self.edit_board_post(post, msg)
-
-        else:
-            await self.bot.db.remove_board_message(message)
-
-            if post:
-                await post.delete()
+                if post_msg:
+                    await post_msg.delete()
 
     @commands.Cog.listener()
     async def on_raw_reaction_clear(self, payload: discord.RawReactionClearEvent):
@@ -318,10 +363,56 @@ class Board(commands.Cog):
         if post := await self.bot.db.get_board_post(board, message):
             await post.delete()
 
+    @commands.Cog.listener()
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
+        if not payload.guild_id:
+            return
+
+        if post_details := await self.bot.db.find_board_post_by_id_raw(
+            payload.message_id
+        ):
+            if post := await self.resolve_message(post_details[0], post_details[1]):
+                await post.delete()
+
+            await self.bot.db.remove_board_message(payload.message_id)
+
     @commands.group(name="board")
     @commands.guild_only()
     async def emoteboard(self, ctx: commands.Context):
         ...
+
+    @emoteboard.command(name="list")
+    @commands.is_owner()
+    async def list_boards(self, ctx: commands.Context):
+        msg = [
+            f"{b.emote!s} 🡲 {b.channel.mention} **[{b.name}]** (min {b.threshold})"
+            async for b in self.bot.db.list_boards(ctx.guild)
+        ]
+
+        await ctx.send("\n".join(msg))
+
+    @emoteboard.command(name="add")
+    @commands.is_owner()
+    async def add_board(
+        self,
+        ctx: commands.Context,
+        emote: Emote,
+        channel: Channel,
+        name: str,
+        threshold: int = 4,
+    ):
+        if board := await self.bot.db.get_board(ctx.guild, emote):
+            await self.bot.post_reaction(ctx.message)
+            await ctx.send(
+                f"{board.channel.mention} is already registered with {board.emote!s}"
+            )
+            return
+
+        if board := await self.bot.db.add_board(channel, threshold, name, emote):
+            await self.bot.post_reaction(ctx.message, success=True)
+
+        else:
+            await self.bot.post_reaction(ctx.message, failure=True)
 
     @emoteboard.command(name="leaders")
     async def board_leaderboard(self, ctx: commands.Context, emote: Emote):
@@ -335,7 +426,7 @@ class Board(commands.Cog):
 
         def formatter(args):
             idx, (count, user_id) = args
-            msg = f"{self.get_icon(idx)} {idx + 1: >3}. <@{user_id}> | {count} {board.emote}"
+            msg = f"{self.get_line_header(idx)} <@{user_id}> | {count}"
 
             if user_id == ctx.author.id:
                 return f"**{msg}**"
