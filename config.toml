@@ -8,4 +8,5 @@
 [General]
     owners=[163521874872107009]
     default_prefix="snake "
+    extra_prefixes=["~"]
     client_id="181584771510566922"

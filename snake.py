@@ -20,7 +20,7 @@ from discord.ext import commands
 
 from cogs.utils import logger
 from cogs.utils.colors import Colorize as C
-from cogs.utils.sql import SQL, Emote
+from cogs.utils.sql import SQL, Channel, Emote
 
 clogger = logger.get_console_logger("snake")
 
@@ -46,7 +46,6 @@ def _read_config(filename):
 _CREDS = _read_config("credentials.toml")
 
 logger.set_level(debug=_DEBUG)
-log = logger.get_logger()
 
 
 class Builtin(commands.Cog):
@@ -270,11 +269,31 @@ class SnakeBot(commands.Bot):
             if not kwargs.get("quiet"):
                 await message.channel.send(str(reaction_emoji))
 
+    async def resolve_message(
+        self, channel_id: int, message_id: int
+    ) -> Optional[discord.Message]:
+        try:
+            channel = await self.fetch_channel(channel_id)
+        except:
+            return
+
+        if not isinstance(channel, Channel):
+            return
+
+        try:
+            message = await channel.fetch_message(message_id)
+        except:
+            return
+
+        return message
+
     async def get_prefix(self, message: discord.Message):
-        prefixes = [self.config["General"]["default_prefix"]]
+        prefixes = [self.config["General"]["default_prefix"]] + self.config[
+            "General"
+        ].get("extra_prefixes", [])
 
         if await self.is_owner(message.author):
-            prefixes += ["s ", "Σ", "ß"]
+            prefixes += ["s ", "Σ "]
 
         return prefixes
 

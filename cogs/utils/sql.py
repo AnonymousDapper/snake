@@ -5,7 +5,14 @@
 
 from __future__ import annotations
 
-__all__ = "EmoteBoard", "SQL", "Emote", "BoardMessage"
+__all__ = (
+    "EmoteBoard",
+    "SQL",
+    "Emote",
+    "BoardMessage",
+    "ReactionRole",
+    "RawReactionRole",
+)
 
 import asyncio
 from typing import TYPE_CHECKING, Optional, cast
@@ -35,34 +42,48 @@ class EmoteBoard(msgspec.Struct):
     emote: Emote
 
 
-class RawEmoteBoard(msgspec.Struct):
-    id: int
-    guild_id: int
-    channel_id: int
-    threshold: int
-    name: str
-    emote: str
-
-    async def resolve(self, guild: Guild) -> Optional[EmoteBoard]:
-        if guild.id != self.guild_id:
-            return
-
-        channel = await guild.fetch_channel(self.channel_id)
-
-        if not channel:
-            return
-
-        emote = PartialEmoji.from_str(self.emote)
-
-        return EmoteBoard(
-            self.id, guild, cast(Channel, channel), self.threshold, self.name, emote
-        )
-
-
 class BoardMessage(msgspec.Struct):
     board: EmoteBoard
     message: Message
     reacts: int
+
+
+class ReactionRole(msgspec.Struct):
+    role: Role
+    guild: Guild
+    message: Message
+    emote: Emote
+
+
+class RawReactionRole(msgspec.Struct):
+    role_id: int
+    guild_id: int
+    channel_id: int
+    message_id: int
+    emote: str
+
+    async def resolve(self, guild: Guild) -> Optional[ReactionRole]:
+        if guild.id != self.guild_id:
+            raise ValueError("Guild ID does not match")
+
+        if not (channel := guild.get_channel(self.channel_id)):
+            raise ValueError(
+                f"Channel [{self.guild_id}/{self.channel_id}] could not be found"
+            )
+
+        if not (role := guild.get_role(self.role_id)):
+            raise ValueError(
+                f"Role [{self.guild_id}@{self.role_id}] could not be found"
+            )
+
+        try:
+            message = await channel.fetch_message(self.message_id)
+        except Exception as e:
+            raise ValueError(
+                f"Message [{self.guild_id}/{self.channel_id}/{self.message_id}] could not be found: {e!s}"
+            )
+
+        return ReactionRole(role, guild, message, PartialEmoji.from_str(self.emote))
 
 
 class SQL:
@@ -75,6 +96,7 @@ class SQL:
     async def _setup(self):
         if not self._ready:
             self.conn = await aiosqlite.connect(self.db_file)
+            self.conn.row_factory = aiosqlite.Row
             await self.conn.execute("PRAGMA foreign_keys = ON;")
             self._ready = True
 
@@ -106,18 +128,6 @@ class SQL:
                         row[0], guild, cast(Channel, channel), row[2], row[3], row[4]
                     )
 
-    async def get_board_raw(
-        self, guild_id: int, emote_id: int
-    ) -> Optional[RawEmoteBoard]:
-        async with self.conn.execute(
-            "SELECT channel_id, threshold, name, emote FROM boards WHERE guild_id = ? AND id = ?;",
-            (guild_id, emote_id),
-        ) as cur:
-            data = await cur.fetchone()
-
-            if data:
-                RawEmoteBoard(emote_id, guild_id, data[0], data[1], data[2], data[3])
-
     async def find_board(
         self, guild: Guild, query: Emote | str
     ) -> Optional[EmoteBoard]:
@@ -148,6 +158,16 @@ class SQL:
 
         return await self.get_board(channel.guild, emote)
 
+    async def check_board_raw(self, guild_id: int, emote: Emote) -> bool:
+        async with self.conn.execute(
+            "SELECT true FROM boards WHERE guild_id = ? and emote = ?;",
+            (guild_id, str(emote)),
+        ) as cur:
+            if data := await cur.fetchone():
+                return True
+
+        return False
+
     # --> board_messages
     async def get_board_message(
         self, board: EmoteBoard, message: Message
@@ -174,12 +194,14 @@ class SQL:
         ) as cur:
             data = await cur.fetchone()
 
-            if (
-                data
-                and (channel := cast(Channel, board.guild.get_channel(data[1])))
-                and (message := await channel.fetch_message(data[0]))
-            ):
-                return BoardMessage(board, message, data[2])
+            if data and (channel := cast(Channel, board.guild.get_channel(data[1]))):
+                try:
+                    message = await channel.fetch_message(data[0])
+                except:
+                    return
+
+                if message:
+                    return BoardMessage(board, message, data[2])
 
     async def add_board_message(
         self, board: EmoteBoard, message: Message, reacts: int
@@ -249,7 +271,10 @@ class SQL:
             data = await cur.fetchone()
 
             if data:
-                return await board.channel.fetch_message(data[0])
+                try:
+                    return await board.channel.fetch_message(data[0])
+                except:
+                    pass
 
     async def find_board_post_by_id(self, original: Message) -> Optional[Message]:
         async with self.conn.execute(
@@ -265,7 +290,10 @@ class SQL:
             data = await cur.fetchone()
 
             if data and (channel := original.guild.get_channel(data[0])):
-                return await channel.fetch_message(data[1])
+                try:
+                    return await channel.fetch_message(data[1])
+                except:
+                    pass
 
     async def find_board_post_by_id_raw(
         self, original_id: int
@@ -286,6 +314,27 @@ class SQL:
                 return data[0], data[1]
 
     # --> reaction roles
+    async def get_autorole(
+        self, guild: Guild, message: Message, emote: Emote
+    ) -> Optional[RawReactionRole]:
+        async with self.conn.execute(
+            "SELECT role_id, guild_id, channel_id, message_id, emote FROM autoroles WHERE guild_id = ? AND message_id = ? AND emote = ?;",
+            (guild.id, message.id, str(emote)),
+        ) as cur:
+            data = await cur.fetchone()
+
+            if data:
+                return RawReactionRole(*data)
+
+    # this probably should not attempt to resolve in this method
+    async def list_autoroles(self, guild: Guild):
+        async with self.conn.execute(
+            "SELECT role_id, guild_id, channel_id, message_id, emote FROM autoroles WHERE guild_id = ?;",
+            (guild.id,),
+        ) as cur:
+            async for row in cur:
+                yield RawReactionRole(*row)
+
     async def add_autorole(
         self, guild: Guild, message: Message, role: Role, react: Emote
     ):
@@ -295,3 +344,15 @@ class SQL:
         )
 
         await self.conn.commit()
+
+    async def check_autorole_raw(
+        self, guild_id: int, message_id: int, emote: Emote
+    ) -> bool:
+        async with self.conn.execute(
+            "SELECT true FROM autoroles WHERE guild_id = ? AND message_id = ? AND emote = ?;",
+            (guild_id, message_id, str(emote)),
+        ) as cur:
+            if data := await cur.fetchone():
+                return True
+
+        return False

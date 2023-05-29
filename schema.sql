@@ -19,13 +19,6 @@ CREATE TABLE board_messages (
         ON DELETE CASCADE ON UPDATE NO ACTION
 );
 
-CREATE TABLE autoroles (
-    role_id INTEGER PRIMARY KEY,
-    guild_id INTEGER NOT NULL,
-    channel_id INTEGER NOT NULL,
-    message_id INTEGER NOT NULL,
-    emote TEXT NOT NULL
-);
 
 CREATE TABLE posted_board_messages (
     message_id INTEGER PRIMARY KEY,
@@ -33,4 +26,12 @@ CREATE TABLE posted_board_messages (
 
     FOREIGN KEY(message_id) REFERENCES board_messages(message_id)
         ON DELETE CASCADE ON UPDATE NO ACTION
+);
+
+CREATE TABLE autoroles (
+    role_id INTEGER PRIMARY KEY,
+    guild_id INTEGER NOT NULL,
+    channel_id INTEGER NOT NULL,
+    message_id INTEGER NOT NULL,
+    emote TEXT NOT NULL
 );

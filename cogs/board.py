@@ -142,24 +142,6 @@ class Board(commands.Cog):
 
             idx = idx + 1
 
-    async def resolve_message(
-        self, channel_id: int, message_id: int
-    ) -> Optional[discord.Message]:
-        try:
-            channel = await self.bot.fetch_channel(channel_id)
-        except:
-            return
-
-        if not isinstance(channel, Channel):
-            return
-
-        try:
-            message = await channel.fetch_message(message_id)
-        except:
-            return
-
-        return message
-
     async def add_board_post(self, message: BoardMessage):
         embeds = []
         footer = []
@@ -228,14 +210,20 @@ class Board(commands.Cog):
         if react := discord.utils.find(
             lambda r: self.compare_emoji(r.emoji, board.emote), original.reactions
         ):
-            total_reacts |= {m.id async for m in react.users() if not m.bot}
+            total_reacts |= {
+                m.id async for m in react.users() if not m.bot and m != original.author
+            }
 
             if post and (
                 post_react := discord.utils.find(
                     lambda r: self.compare_emoji(r.emoji, board.emote), post.reactions
                 )
             ):
-                total_reacts |= {m.id async for m in post_react.users() if not m.bot}
+                total_reacts |= {
+                    m.id
+                    async for m in post_react.users()
+                    if not m.bot and m != original.author
+                }
 
         return len(total_reacts)
 
@@ -248,8 +236,17 @@ class Board(commands.Cog):
         if payload.member and payload.member.bot:
             return
 
+        if not (payload.guild_id) or not (
+            await self.bot.db.check_board_raw(payload.guild_id, payload.emoji)
+        ):
+            return
+
         if not (
-            (msg := await self.resolve_message(payload.channel_id, payload.message_id))
+            (
+                msg := await self.bot.resolve_message(
+                    payload.channel_id, payload.message_id
+                )
+            )
             and msg.guild
         ):
             return
@@ -348,7 +345,7 @@ class Board(commands.Cog):
     async def on_raw_reaction_clear_emoji(
         self, payload: discord.RawReactionClearEmojiEvent
     ):
-        message = await self.resolve_message(payload.channel_id, payload.message_id)
+        message = await self.bot.resolve_message(payload.channel_id, payload.message_id)
 
         if not message or not message.guild:
             return
@@ -371,7 +368,7 @@ class Board(commands.Cog):
         if post_details := await self.bot.db.find_board_post_by_id_raw(
             payload.message_id
         ):
-            if post := await self.resolve_message(post_details[0], post_details[1]):
+            if post := await self.bot.resolve_message(post_details[0], post_details[1]):
                 await post.delete()
 
             await self.bot.db.remove_board_message(payload.message_id)
@@ -381,7 +378,7 @@ class Board(commands.Cog):
     async def emoteboard(self, ctx: commands.Context):
         ...
 
-    @emoteboard.command(name="list")
+    @emoteboard.command(name="list", brief="list emote boards in current server")
     @commands.is_owner()
     async def list_boards(self, ctx: commands.Context):
         msg = [
@@ -391,7 +388,7 @@ class Board(commands.Cog):
 
         await ctx.send("\n".join(msg))
 
-    @emoteboard.command(name="add")
+    @emoteboard.command(name="add", brief="add a new emote board")
     @commands.is_owner()
     async def add_board(
         self,
@@ -414,7 +411,7 @@ class Board(commands.Cog):
         else:
             await self.bot.post_reaction(ctx.message, failure=True)
 
-    @emoteboard.command(name="leaders")
+    @emoteboard.command(name="leaders", brief="show leaderboard")
     async def board_leaderboard(self, ctx: commands.Context, emote: Emote):
         assert ctx.guild
 

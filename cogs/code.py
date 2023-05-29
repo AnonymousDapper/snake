@@ -250,36 +250,6 @@ class Code(commands.Cog):
         if isinstance(result, (str, tuple, list, bytes, set)):
             info.append(("Length", len(result)))
 
-        # klass = type(result)
-
-        # header = f"class {klass.__module__}.{klass.__qualname__}"
-
-        # if len(bases := tuple(filter(lambda c: c is not object, klass.__bases__))) > 0:
-        #     header += f"({', '.join(map(lambda c: c.__qualname__, bases))})"
-
-        # def format_fn_signature(fn: FunctionType | MethodType | BuiltinFunctionType) -> str:
-        #     if isinstance(fn, MethodType):
-        #         msg = format_fn_signature(fn.__func__) # type: ignore
-        #         if inspect.isclass(fn.__self__):
-        #             return f"classmethod | {msg}"
-
-        #         return msg
-
-        #     elif isinstance(fn, BuiltinFunctionType):
-        #         return f"{fn.__name__}{fn.__text_signature__}"
-
-        #     else:
-        #         return f"{fn.__name__}{inspect.signature(fn)}"
-
-        # signature = [f"{header}:"]
-        # members = filter(lambda p: not p[0].startswith("_"), sorted(inspect.getmembers(klass), key=lambda p: 1 if inspect.isroutine(p[1]) else 0))
-        # for name, member in members:
-        #     if isinstance(member, (FunctionType, MethodType, BuiltinFunctionType)):
-        #         signature.append(f"  {format_fn_signature(member)}")
-
-        #     else:
-        #         signature.append(f"  {name} = {member}")
-
         return f"```prolog\n{data}\n\n======== Data ========\n\n{self.NL.join(f'{a:12.12} = {b}' for a, b in info)}\n```"
 
     # Run code in eval mode
@@ -360,6 +330,8 @@ class Code(commands.Cog):
         try:
             async with self.bot.db.conn.execute(sql) as cur:
                 results = list(await cur.fetchall())
+
+            await self.bot.db.conn.commit()
 
         except aiosqlite.OperationalError as e:
             await ctx.send(

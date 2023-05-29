@@ -202,7 +202,7 @@ class Math(commands.Cog):
 
         except Exception as e:
             await ctx.reply(
-                f"\N{WARNING SIGN} Render Failed\n[{type(e).__name__}]: `{e}`",
+                f"\N{WARNING SIGN}\N{VARIATION SELECTOR-16} Render Failed\n[{type(e).__name__}]: `{e}`",
                 ephemeral=True
                 # file=discord.File("tex/failed.png")
             )

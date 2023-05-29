@@ -5,7 +5,6 @@ description = "Robosnake for discord"
 authors = ["AnonymousDapper <dapper@a-sketchy.site>"]
 license = "MIT"
 readme = "README.md"
-#packages = [{include = "snake.py", from = "../snake"}]
 
 [tool.poetry.scripts]
 bot = "snake:main"
