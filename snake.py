@@ -305,12 +305,11 @@ class SnakeBot(commands.Bot):
             f"Logged in as {C(self.user.name).yellow()}{C(' DEBUG MODE').bright_magenta() if self.debug else ''}\nLoaded {C(boot_duration).cyan()}"
         )
 
-        emote = {"animated": False, "id": 357268510759714816, "name": "blobpeek"}
-
-        act = discord.Activity(name="for `snake help`", state="state", details="details", type=discord.ActivityType.watching, emoji=emote)
+        act = discord.Activity(
+            name="for `snake help`", type=discord.ActivityType.watching
+        )
 
         await self.change_presence(activity=act)
-
 
     async def on_resume(self):
         self.resume_time = arrow.utcnow()

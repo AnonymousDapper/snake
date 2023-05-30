@@ -110,7 +110,9 @@ class Roles(commands.Cog):
     async def reactroles(self, ctx: commands.Context):
         ...
 
-    @reactroles.command(name="link", brief="Register an autorole with its reaction", aliases=["+"])
+    @reactroles.command(
+        name="link", brief="Register an autorole with its reaction", aliases=["+"]
+    )
     @commands.is_owner()
     async def new_autorole(
         self,
@@ -146,9 +148,9 @@ class Roles(commands.Cog):
         else:
             await self.bot.post_reaction(ctx.message, success=True)
 
-    #TODO: unlink
+    # TODO: unlink
 
-    #TODO: list
+    # TODO: list
 
 
 async def setup(bot):

@@ -6,8 +6,10 @@
 
 from __future__ import annotations
 
+import inspect
 import unicodedata
-from typing import TYPE_CHECKING
+from os import path
+from typing import TYPE_CHECKING, Optional
 
 import discord
 from discord.ext import commands
@@ -37,6 +39,43 @@ class Misc(commands.Cog):
                     inline=True,
                 )
             await ctx.send(embed=result_embed)
+
+    # modified from R. Danny source code (copyright Rapptz https://github.com/Rapptz/RoboDanny)
+    # under the Mozilla Public License 2.0 (https://choosealicense.com/licenses/mpl-2.0/)
+    @commands.command(name="source", brief="view command source")
+    async def get_source(self, ctx: commands.Context, *, command: Optional[str] = None):
+        source_url = "https://gitlab.a-sketchy.site/AnonymousDapper/snake"
+        branch = "master"
+
+        if command is None:
+            return await ctx.send(source_url)
+
+        if command == "help":
+            src = type(self.bot.help_command)
+            module = src.__module__
+            filename = inspect.getsourcefile(src)
+        else:
+            if not (obj := self.bot.get_command(command.replace(".", " "))):
+                return await self.bot.post_reaction(ctx.message, unknown=True)
+
+            src = obj.callback
+            module = obj.callback.__module__
+            filename = src.__code__.co_filename
+
+        lines, firstline = inspect.getsourcelines(src)
+        if not module.startswith("discord"):
+            if filename is None:
+                return await self.bot.post_reaction(ctx.message, unknown=True)
+
+            location = path.relpath(filename).replace("\\", "/")
+        else:
+            location = module.replace(".", "/") + ".py"
+            source_url = "https://github.com/Rapptz/discord.py"
+            # maybe change branch later
+
+        await ctx.send(
+            f"<{source_url}/blob/{branch}/{location}#L{firstline}-L{firstline + len(lines) - 1}>"
+        )
 
 
 async def setup(bot):

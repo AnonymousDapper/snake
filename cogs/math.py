@@ -26,7 +26,7 @@ log = get_logger()
 
 class LatexMenu(discord.ui.View):
     def __init__(self, cog: "Math", uid: int, source: str):
-        super().__init__()
+        super().__init__(timeout=None)
         self.cog = cog
         self.uid = uid
         self.source = source
@@ -63,7 +63,10 @@ class LatexMenu(discord.ui.View):
         return image_path
 
     @discord.ui.button(
-        label="Source", style=discord.ButtonStyle.danger, emoji="\N{PAGE FACING UP}"
+        label="Source",
+        style=discord.ButtonStyle.danger,
+        emoji="\N{PAGE FACING UP}",
+        custom_id="view:latex:show_source",
     )
     async def get_source(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -81,6 +84,7 @@ class LatexMenu(discord.ui.View):
         label="Render Light",
         style=discord.ButtonStyle.primary,
         emoji="\N{WHITE LARGE SQUARE}",
+        custom_id="view:latex:render_light",
     )
     async def do_render_light_theme(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -97,6 +101,7 @@ class LatexMenu(discord.ui.View):
         label="Render Dark",
         style=discord.ButtonStyle.secondary,
         emoji="\N{BLACK LARGE SQUARE}",
+        custom_id="view:latex:render_dark",
     )
     async def do_render_dark_theme(
         self, interaction: discord.Interaction, button: discord.ui.Button
@@ -118,6 +123,8 @@ class Math(commands.Cog):
         self.bot = bot
         self.COMPILE_PATH = Path("cogs/utils/tex/compile.sh").resolve()
 
+        self.view_msgs = []
+
     @staticmethod
     def clean(code):
         if code.startswith("```") and code.endswith("```"):
@@ -125,14 +132,25 @@ class Math(commands.Cog):
 
         return code.strip("` \n")
 
+    async def cog_load(self):
+        await self.clean_staging_dir()
+
+    async def cog_unload(self):
+        for msg in self.view_msgs:
+            try:
+                await msg.edit(view=None)
+            except:
+                pass
+
     async def clean_staging_dir(self):
         staging_dir = Path("tex/staging").resolve()
         subdirs = [str(p) for p in staging_dir.iterdir()]
-        try:
-            await self.run_program(Program.Rm, "-rf", *subdirs)
+        if subdirs:
+            try:
+                await self.run_program(Program.Rm, "-rf", *subdirs)
 
-        except:
-            pass
+            except:
+                pass
 
     async def run_subprocess(
         self,
@@ -195,6 +213,8 @@ class Math(commands.Cog):
     @commands.hybrid_command(name="latex", brief="render latex", aliases=["tex"])
     async def latex_command(self, ctx: commands.Context, *, latex: str):
         source = self.clean(latex)
+        await ctx.defer()
+
         try:
             image_path = await self.render_latex(str(ctx.message.id), source)
 
@@ -208,15 +228,16 @@ class Math(commands.Cog):
             )
 
         else:
-            await ctx.send(
-                file=attachment,
-                view=LatexMenu(self, ctx.message.id, source),
-                reference=ctx.message,
-                mention_author=False,
+            self.view_msgs.append(
+                await ctx.send(
+                    f"*from **{ctx.author.display_name}***",
+                    file=attachment,
+                    view=LatexMenu(self, ctx.message.id, source),
+                    reference=ctx.message,
+                    mention_author=False,
+                )
             )
 
 
 async def setup(bot):
-    cog = Math(bot)
-    await cog.clean_staging_dir()
-    await bot.add_cog(cog)
+    await bot.add_cog(Math(bot))
