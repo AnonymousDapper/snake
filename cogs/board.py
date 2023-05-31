@@ -398,7 +398,7 @@ class Board(commands.Cog):
     @commands.is_owner()
     async def list_boards(self, ctx: commands.Context):
         msg = [
-            f"{b.emote!s} ➜ <@#{b.channel_id}> **[{b.name}]** (min. {b.threshold})"
+            f"{b.emote!s} ➜ <#{b.channel_id}> **[{b.name}]** (min. {b.threshold})"
             async for b in self.bot.db.list_boards(ctx.guild.id)
         ]
 
@@ -444,10 +444,19 @@ class Board(commands.Cog):
             await self.bot.post_reaction(ctx.message, unknown=True)
             return
 
-        def formatter(user: RawBoardUser):
-            msg = (
-                f"{self.get_line_header(user.rank)} <@{user.id}> | {user.total_reacts}"
-            )
+        async def formatter(user: RawBoardUser):
+            display_name = f"<@{user.id}>"
+
+            if not (ctx.guild.get_member(user.id)):
+                if raw_msg := await self.bot.db.get_newest_message_by_author(user.id):
+                    try:
+                        display_name = (
+                            await raw_msg.resolve(self.bot)
+                        ).author.display_name
+                    except:
+                        pass
+
+            msg = f"{self.get_line_header(user.rank)} {display_name} | {user.total_reacts}"
 
             if user.id == ctx.author.id:
                 return f"**{msg}**"
@@ -460,8 +469,11 @@ class Board(commands.Cog):
 
         user = discord.utils.find(lambda u: u.id == ctx.author.id, leaderboard)
 
-        podium = map(formatter, leaderboard[:3])
-        tail = map(formatter, leaderboard[3:11])
+        # podium = map(formatter, leaderboard[:3])
+        # tail = map(formatter, leaderboard[3:11])
+
+        podium = [await formatter(u) for u in leaderboard[:3]]
+        tail = [await formatter(u) for u in leaderboard[3:11]]
 
         embed = discord.Embed(
             color=ctx.author.color,

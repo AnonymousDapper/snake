@@ -165,7 +165,7 @@ class BoardMessage(DBObject):
     guild: Guild
     reacts: int
     _emote: int
-    _board: Optional[EmoteBoard]
+    _board: Optional[EmoteBoard] = None
 
     async def get_board(self, client: Client) -> EmoteBoard:
         if not self._board:
@@ -354,7 +354,7 @@ class SQL:
             (board_id,),
         ) as cur:
             if data := await cur.fetchone():
-                return RawEmoteBoard(*data)
+                return RawEmoteBoard(self, *data)
 
     async def list_boards(self, guild_id: int):
         async with self.conn.execute(
@@ -428,6 +428,21 @@ class SQL:
             if data := await cur.fetchone():
                 return RawMessage(*data)
 
+    async def get_newest_message_by_author(
+        self, author_id: int
+    ) -> Optional[RawMessage]:
+        async with self.conn.execute(
+            """
+            SELECT message_id, channel_id, guild_id
+            FROM board_messages
+            WHERE author_id = ?
+            ORDER BY message_id DESC;
+            """,
+            (author_id,),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawMessage(*data)
+
     async def add_board_message(
         self,
         message_id: int,
@@ -461,7 +476,7 @@ class SQL:
             WHERE message_id = ?
             RETURNING message_id, channel_id, guild_id, author_id, reacts, emote;
             """,
-            (message_id, reacts),
+            (reacts, message_id),
         ) as cur:
             if data := await cur.fetchone():
                 return RawBoardMessage(self, *data)
@@ -490,12 +505,12 @@ class SQL:
                 AVG(reacts) spm,
                 MAX(reacts) best,
                 MIN(reacts) worst,
-                (SELECT COUNT(DISTINCT author_id) FROM board_messages WHERE emote = ?) users,
+                (SELECT COUNT(DISTINCT author_id) FROM board_messages WHERE emote = :board_id) users,
                 emote
-            FROM board_messages bm WHERE emote = ?
+            FROM board_messages bm WHERE emote = :board_id
             GROUP BY author_id ORDER BY total DESC;
             """,
-            (board_id,),
+            dict(board_id=board_id),
         ) as cur:
             async for row in cur:
                 yield RawBoardUser(self, *row)
@@ -588,10 +603,10 @@ class SQL:
             (original_id, post_id),
         ) as cur:
             if data := await cur.fetchone():
-                return RawPostMessage(*data)
+                return RawPostMessage(self, *data)
 
-        log.critical(f"[Add post failed] {message_id} -> {post_id}")
-        raise RuntimeError(f"Adding post {post_id} for {message_id} failed")
+        log.critical(f"[Add post failed] {original_id} -> {post_id}")
+        raise RuntimeError(f"Adding post {post_id} for {original_id} failed")
 
     # => autoroles
 
