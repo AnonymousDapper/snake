@@ -20,7 +20,7 @@ from discord.ext import commands
 
 from cogs.utils import logger
 from cogs.utils.colors import Colorize as C
-from cogs.utils.sql import SQL, Channel, Emote
+from cogs.utils.sql import SQL, Emote
 
 clogger = logger.get_console_logger("snake")
 
@@ -269,24 +269,6 @@ class SnakeBot(commands.Bot):
             if not kwargs.get("quiet"):
                 await message.channel.send(str(reaction_emoji))
 
-    async def resolve_message(
-        self, channel_id: int, message_id: int
-    ) -> Optional[discord.Message]:
-        try:
-            channel = await self.fetch_channel(channel_id)
-        except:
-            return
-
-        if not isinstance(channel, Channel):
-            return
-
-        try:
-            message = await channel.fetch_message(message_id)
-        except:
-            return
-
-        return message
-
     async def get_prefix(self, message: discord.Message):
         prefixes = [self.config["General"]["default_prefix"]] + self.config[
             "General"
@@ -305,9 +287,7 @@ class SnakeBot(commands.Bot):
             f"Logged in as {C(self.user.name).yellow()}{C(' DEBUG MODE').bright_magenta() if self.debug else ''}\nLoaded {C(boot_duration).cyan()}"
         )
 
-        act = discord.Activity(
-            name="for `snake help`", type=discord.ActivityType.watching
-        )
+        act = discord.Activity(name="for ~help", type=discord.ActivityType.watching)
 
         await self.change_presence(activity=act)
 

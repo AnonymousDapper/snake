@@ -78,6 +78,7 @@ def get_logger():
     severe_stream_handler = logging.StreamHandler()
     severe_stream_handler.setLevel(logging.ERROR)
     severe_stream_handler.setFormatter(ConsoleFormatter())
+    module_logger.addHandler(severe_stream_handler)
 
     del call_frame
     del call_module

@@ -6,21 +6,28 @@
 from __future__ import annotations
 
 __all__ = (
-    "EmoteBoard",
     "SQL",
     "Emote",
+    "Channel",
+    "RawMessage",
+    "RawEmoteBoard",
+    "EmoteBoard",
+    "RawBoardMessage",
     "BoardMessage",
-    "ReactionRole",
-    "RawReactionRole",
+    "RawBoardUser",
+    "BoardUser",
+    "RawPostMessage",
+    "PostMessage",
+    "RawAutorole",
+    "Autorole",
 )
 
-import asyncio
 from typing import TYPE_CHECKING, Optional, cast
 
 import aiosqlite
 import msgspec
-from discord import (Emoji, Guild, Message, PartialEmoji, Role, StageChannel,
-                     TextChannel, Thread)
+from discord import (Client, Emoji, Guild, Message, PartialEmoji, Role,
+                     StageChannel, TextChannel, Thread, User)
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,8 +40,76 @@ Emote = Emoji | PartialEmoji | str
 Channel = TextChannel | StageChannel | Thread
 
 
-class EmoteBoard(msgspec.Struct):
+class ResolveError(Exception):
+    def __init__(self, cls, item, *args):
+        super().__init__(cls, item, *args)
+        self.cls = cls
+        self.item = item
+
+    def __str__(self):
+        return f"Resolving {self.cls} failed (bad item: {self.item})"
+
+
+class DBObject(msgspec.Struct):
+    _db: SQL
+
+
+# helper classes to simplify resolving IDs
+
+
+class RawMessage(msgspec.Struct):
+    message_id: int
+    channel_id: int
+    guild_id: int
+
+    async def resolve(self, client: Client) -> Message:
+        if not (guild := client.get_guild(self.guild_id)):
+            raise ResolveError("Message.guild", self.guild_id)
+
+        try:
+            channel = cast(Channel, await guild.fetch_channel(self.channel_id))
+
+        except Exception as e:
+            raise ResolveError("Message.channel", self.channel_id) from e
+
+        try:
+            return await channel.fetch_message(self.message_id)
+
+        except Exception as e:
+            raise ResolveError("Message", self.message_id)
+
+
+class RawEmoteBoard(DBObject):
     id: int
+    guild_id: int
+    channel_id: int
+    threshold: int
+    name: str
+    emote: str
+
+    async def resolve(self, client: Client) -> EmoteBoard:
+        if not (guild := client.get_guild(self.guild_id)):
+            raise ResolveError("EmoteBoard", self.guild_id)
+
+        try:
+            channel = cast(Channel, await guild.fetch_channel(self.channel_id))
+
+        except Exception as e:
+            raise ResolveError("EmoteBoard", self.channel_id) from e
+
+        return EmoteBoard(
+            self._db,
+            self.id,
+            guild,
+            channel,
+            self.threshold,
+            self.name,
+            PartialEmoji.from_str(self.emote),
+        )
+
+
+class EmoteBoard(DBObject):
+    _id: int
     guild: Guild
     channel: Channel
     threshold: int
@@ -42,53 +117,204 @@ class EmoteBoard(msgspec.Struct):
     emote: Emote
 
 
-class BoardMessage(msgspec.Struct):
-    board: EmoteBoard
-    message: Message
+class RawBoardMessage(DBObject):
+    message_id: int
+    channel_id: int
+    guild_id: int
+    author_id: int
     reacts: int
+    emote_fk: int
+
+    async def resolve(self, client: Client) -> BoardMessage:
+        if not (guild := client.get_guild(self.guild_id)):
+            raise ResolveError("BoardMessage.guild", self.guild_id)
+
+        try:
+            channel = cast(Channel, await guild.fetch_channel(self.channel_id))
+
+        except Exception as e:
+            raise ResolveError("BoardMessage.channel", self.channel_id) from e
+
+        try:
+            message = await channel.fetch_message(self.message_id)
+
+        except Exception as e:
+            raise ResolveError("BoardMessage.message", self.message_id)
+
+        if self.author_id != message.author.id:
+            log.warn(
+                f"Author ID mismatch on resolving message [{message.id}]: ({self.author_id} != {message.author.id})"
+            )
+
+        return BoardMessage(
+            self._db, message, channel, guild, self.reacts, self.emote_fk
+        )
+
+    async def update_reacts(self, react_count: int):
+        self.reacts = react_count
+
+        await self._db.update_board_message(self.message_id, self.reacts)
+
+    async def remove(self):
+        await self._db.remove_board_message(self.message_id)
 
 
-class ReactionRole(msgspec.Struct):
-    role: Role
-    guild: Guild
+class BoardMessage(DBObject):
     message: Message
-    emote: Emote
+    channel: Channel
+    guild: Guild
+    reacts: int
+    _emote: int
+    _board: Optional[EmoteBoard]
+
+    async def get_board(self, client: Client) -> EmoteBoard:
+        if not self._board:
+            self._board = await (await self.get_board_raw()).resolve(client)
+
+        return self._board
+
+    async def get_board_raw(self) -> RawEmoteBoard:
+        if raw := await self._db.get_board_by_id(self._emote):
+            return raw
+
+        raise ResolveError("BoardMessage.board", self._emote)
+
+    async def update_reacts(self, react_count: int):
+        self.reacts = react_count
+
+        await self._db.update_board_message(self.message.id, self.reacts)
+
+    async def add_post(self, post: Message):
+        await self._db.add_board_post(self.message.id, post.id)
+
+    async def remove(self):
+        await self._db.remove_board_message(self.message.id)
 
 
-class RawReactionRole(msgspec.Struct):
+class RawBoardUser(DBObject):
+    id: int
+    total_reacts: int
+    message_count: int
+    rank: int
+    average_reacts: float
+    best_react: int
+    worst_react: int
+    total_users: int
+    _board_id: int
+
+    async def resolve(self, client: Client) -> BoardUser:
+        if not (user := client.get_user(self.id)):
+            raise ResolveError("BoardUser.user", self.id)
+
+        best = None
+        worst = None
+
+        if raw_best := await self._db.get_board_message_by_reacts(
+            self.id, self.best_react, self._board_id
+        ):
+            try:
+                best = await raw_best.resolve(client)
+            except:
+                pass
+
+        if raw_worst := await self._db.get_board_message_by_reacts(
+            self.id, self.worst_react, self._board_id
+        ):
+            try:
+                worst = await raw_worst.resolve(client)
+            except:
+                pass
+
+        return BoardUser(
+            user,
+            self.total_reacts,
+            self.message_count,
+            self.rank,
+            self.average_reacts,
+            best,
+            self.best_react,
+            worst,
+            self.worst_react,
+            self.total_users,
+        )
+
+
+class BoardUser(msgspec.Struct):
+    user: User
+    total: int
+    messages: int
+    rank: int
+    average: float
+    best: Optional[Message]
+    best_count: int
+    worst: Optional[Message]
+    worst_count: int
+    users_count: int
+
+
+class RawPostMessage(DBObject):
+    message_id: int
+    post_id: int
+
+    async def resolve(self, client: Client) -> PostMessage:
+        if not (raw_message := await self._db.get_board_message(self.message_id)):
+            raise ResolveError("PostMessage.original", self.message_id)
+
+        if not (raw_post := await self._db.get_board_post_data(self.post_id)):
+            raise ResolveError("PostMessage.post", self.post_id)
+
+        message = await raw_message.resolve(client)
+        post = await raw_post.resolve(client)
+
+        return PostMessage(self._db, message, post)
+
+
+class PostMessage(DBObject):
+    original: BoardMessage
+    post: Message
+
+    def update_original(self, new: BoardMessage):
+        if new.message == self.original.message:
+            self.original = new
+
+
+class RawAutorole(DBObject):
     role_id: int
     guild_id: int
     channel_id: int
     message_id: int
     emote: str
 
-    async def resolve(self, guild: Guild) -> Optional[ReactionRole]:
-        if guild.id != self.guild_id:
-            raise ValueError("Guild ID does not match")
-
-        if not (channel := guild.get_channel(self.channel_id)):
-            raise ValueError(
-                f"Channel [{self.guild_id}/{self.channel_id}] could not be found"
-            )
-
-        if not (role := guild.get_role(self.role_id)):
-            raise ValueError(
-                f"Role [{self.guild_id}@{self.role_id}] could not be found"
-            )
-
+    async def resolve(self, client: Client) -> Autorole:
         try:
-            message = await channel.fetch_message(self.message_id)
-        except Exception as e:
-            raise ValueError(
-                f"Message [{self.guild_id}/{self.channel_id}/{self.message_id}] could not be found: {e!s}"
-            )
+            message = await RawMessage(
+                self.message_id, self.channel_id, self.guild_id
+            ).resolve(client)
+            assert message.guild
 
-        return ReactionRole(role, guild, message, PartialEmoji.from_str(self.emote))
+        except ResolveError as e:
+            raise ResolveError("Autorole.message", e.item)
+
+        except Exception as e:
+            raise ResolveError("Autorole.message", "unknown")
+
+        if not (role := message.guild.get_role(self.role_id)):
+            raise ResolveError("Autorole.role", self.role_id)
+
+        return Autorole(
+            self._db, role, message.guild, message, PartialEmoji.from_str(self.emote)
+        )
+
+
+class Autorole(DBObject):
+    role: Role
+    guild: Guild
+    message: Message
+    emote: Emote
 
 
 class SQL:
     def __init__(self, db_file: str | Path):
-        self.loop = asyncio.get_event_loop()
         self.db_file = db_file
         self.conn: aiosqlite.Connection
         self._ready = False
@@ -104,255 +330,317 @@ class SQL:
         if self._ready:
             await self.conn.close()
 
-    # --> boards
-    async def get_board(self, guild: Guild, emote: Emote) -> Optional[EmoteBoard]:
+    # => boards
+
+    async def get_board(self, guild_id: int, emote: Emote) -> Optional[RawEmoteBoard]:
         async with self.conn.execute(
-            "SELECT id, channel_id, threshold, name FROM boards WHERE guild_id = ? AND emote = ?;",
-            (guild.id, str(emote)),
-        ) as cur:
-            data = await cur.fetchone()
-
-            if data and (channel := guild.get_channel(data[1])):
-                return EmoteBoard(
-                    data[0], guild, cast(Channel, channel), data[2], data[3], emote
-                )
-
-    async def list_boards(self, guild: Guild):
-        async with self.conn.execute(
-            "SELECT id, channel_id, threshold, name, emote FROM boards WHERE guild_id = ?;",
-            (guild.id,),
-        ) as cur:
-            async for row in cur:
-                if channel := guild.get_channel(row[1]):
-                    yield EmoteBoard(
-                        row[0], guild, cast(Channel, channel), row[2], row[3], row[4]
-                    )
-
-    async def find_board(
-        self, guild: Guild, query: Emote | str
-    ) -> Optional[EmoteBoard]:
-        async with self.conn.execute(
-            "SELECT id, channel_id, threshold, name, emote FROM boards WHERE guild_id = ? AND (name = ? OR emote = ?);",
-            (guild.id, str(query), str(query)),
-        ) as cur:
-            data = await cur.fetchone()
-
-            if data and (channel := guild.get_channel(data[1])):
-                return EmoteBoard(
-                    data[0],
-                    guild,
-                    cast(Channel, channel),
-                    data[2],
-                    data[3],
-                    data[4],
-                )
-
-    async def add_board(
-        self, channel: Channel, threshold: int, name: str, emote: Emote
-    ) -> Optional[EmoteBoard]:
-        await self.conn.execute(
-            "INSERT INTO boards (guild_id, channel_id, threshold, name, emote) VALUES(?, ?, ?, ?, ?);",
-            (channel.guild.id, channel.id, threshold, name, str(emote)),
-        )
-        await self.conn.commit()
-
-        return await self.get_board(channel.guild, emote)
-
-    async def check_board_raw(self, guild_id: int, emote: Emote) -> bool:
-        async with self.conn.execute(
-            "SELECT true FROM boards WHERE guild_id = ? and emote = ?;",
+            """
+            SELECT id, guild_id, channel_id, threshold, name, emote
+            FROM boards
+            WHERE guild_id = ? AND emote = ?;
+            """,
             (guild_id, str(emote)),
         ) as cur:
             if data := await cur.fetchone():
-                return True
+                return RawEmoteBoard(self, *data)
 
-        return False
-
-    # --> board_messages
-    async def get_board_message(
-        self, board: EmoteBoard, message: Message
-    ) -> Optional[BoardMessage]:
+    async def get_board_by_id(self, board_id: int) -> Optional[RawEmoteBoard]:
         async with self.conn.execute(
-            "SELECT reacts, emote FROM board_messages WHERE message_id = ?",
-            (message.id,),
+            """
+            SELECT id, guild_id, channel_id, threshold, name, emote
+            FROM boards
+            WHERE id = ?;
+            """,
+            (board_id,),
         ) as cur:
-            data = await cur.fetchone()
+            if data := await cur.fetchone():
+                return RawEmoteBoard(*data)
 
-            if data:
-                return BoardMessage(board, message, data[0])
+    async def list_boards(self, guild_id: int):
+        async with self.conn.execute(
+            """
+            SELECT id, guild_id, channel_id, threshold, name, emote
+            FROM boards
+            WHERE guild_id = ?;
+            """,
+            (guild_id,),
+        ) as cur:
+            async for row in cur:
+                yield RawEmoteBoard(self, *row)
+
+    async def add_board(
+        self, guild_id: int, channel_id: int, threshold: int, name: str, emote: Emote
+    ) -> RawEmoteBoard:
+        async with self.conn.execute(
+            """
+            INSERT INTO boards (guild_id, channel_id, threshold, name, emote)
+            VALUES (?, ?, ?, ?, ?)
+            RETURNING id, guild_id, channel_id, threshold, name, emote
+            """,
+            (guild_id, channel_id, threshold, name, str(emote)),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawEmoteBoard(self, *data)
+
+        log.critical(f"[Add board failed] {guild_id}#{channel_id} {name}")
+        raise RuntimeError(f"Adding board for {channel_id} failed")
+
+    # => board messages
+
+    async def get_board_message(self, message_id: int) -> Optional[RawBoardMessage]:
+        async with self.conn.execute(
+            """
+            SELECT message_id, channel_id, guild_id, author_id, reacts, emote
+            FROM board_messages
+            WHERE message_id = ?;
+            """,
+            (message_id,),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawBoardMessage(self, *data)
 
     async def get_board_message_by_post(
-        self, board: EmoteBoard, post: Message
-    ) -> Optional[BoardMessage]:
+        self, post_message_id: int
+    ) -> Optional[RawBoardMessage]:
         async with self.conn.execute(
             """
-            SELECT pbm.message_id, bm.channel_id, bm.reacts FROM posted_board_messages pbm
-            JOIN board_messages bm USING(message_id)
+            SELECT bm.message_id, bm.channel_id, bm.guild_id, bm.author_id, bm.reacts, bm.emote
+            FROM board_messages bm
+            JOIN posted_board_messages pbm USING(message_id)
             WHERE pbm.board_message_id = ?;
             """,
-            (post.id,),
+            (post_message_id,),
         ) as cur:
-            data = await cur.fetchone()
+            if data := await cur.fetchone():
+                return RawBoardMessage(self, *data)
 
-            if data and (channel := cast(Channel, board.guild.get_channel(data[1]))):
-                try:
-                    message = await channel.fetch_message(data[0])
-                except:
-                    return
-
-                if message:
-                    return BoardMessage(board, message, data[2])
+    async def get_board_message_by_reacts(
+        self, author_id: int, num_reacts: int, board_id: int
+    ) -> Optional[RawMessage]:
+        async with self.conn.execute(
+            """
+            SELECT message_id, channel_id, guild_id
+            FROM board_messages
+            WHERE author_id = ? AND emote = ? AND reacts = ?;
+            """,
+            (author_id, board_id, num_reacts),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawMessage(*data)
 
     async def add_board_message(
-        self, board: EmoteBoard, message: Message, reacts: int
-    ) -> BoardMessage:
-        await self.conn.execute(
-            "INSERT INTO board_messages (message_id, channel_id, guild_id, author_id, reacts, emote) VALUES (?, ?, ?, ?, ?, ?);",
-            (
-                message.id,
-                message.channel.id,
-                board.guild.id,
-                message.author.id,
-                reacts,
-                board.id,
-            ),
-        )
-
-        await self.conn.commit()
-
-        return BoardMessage(board, message, reacts)
-
-    async def update_board_message(self, message: Message, reacts: int):
-        await self.conn.execute(
-            "UPDATE board_messages SET reacts = ? WHERE message_id = ?;",
-            (reacts, message.id),
-        )
-
-        await self.conn.commit()
-
-    # as long as our FK constraints hold, this should cascade and delete from posted_board_messages as well
-    async def remove_board_message(self, message: Message | int):
-        await self.conn.execute(
-            "DELETE FROM board_messages WHERE message_id = ?",
-            (isinstance(message, Message) and message.id or message,),
-        )
-
-        await self.conn.commit()
-
-    async def get_boardleaders(self, board: EmoteBoard):
+        self,
+        message_id: int,
+        channel_id: int,
+        guild_id: int,
+        author_id: int,
+        reacts: int,
+        emote_fk: int,
+    ) -> RawBoardMessage:
         async with self.conn.execute(
             """
-            SELECT SUM(reacts) as total, author_id
-            FROM board_messages
-            WHERE emote = ?
+            INSERT INTO board_messages (message_id, channel_id, guild_id, author_id, reacts, emote)
+            VALUES(?, ?, ?, ?, ?, ?)
+            RETURNING message_id, channel_id, guild_id, author_id, reacts, emote;
+            """,
+            (message_id, channel_id, guild_id, author_id, reacts, emote_fk),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawBoardMessage(self, *data)
+
+        log.critical(f"[Add board message failed] {guild_id}#{channel_id} {message_id}")
+        raise RuntimeError(f"Adding board message for {message_id} failed")
+
+    async def update_board_message(
+        self, message_id: int, reacts: int
+    ) -> RawBoardMessage:
+        async with self.conn.execute(
+            """
+            UPDATE board_messages
+            SET reacts = ?
+            WHERE message_id = ?
+            RETURNING message_id, channel_id, guild_id, author_id, reacts, emote;
+            """,
+            (message_id, reacts),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawBoardMessage(self, *data)
+
+        log.critical(f"[Update board message failed] {message_id}")
+        raise RuntimeError(f"Updating board message for {message_id} failed")
+
+    async def remove_board_message(self, message_id: int):
+        await self.conn.execute(
+            """
+            DELETE FROM board_messages
+            WHERE message_id = ?;
+            """,
+            (message_id,),
+        )
+        await self.conn.commit()
+
+    async def get_boardleaders(self, board_id: int):
+        async with self.conn.execute(
+            """
+            SELECT
+                author_id,
+                SUM(reacts) total,
+                COUNT(message_id) times,
+                (ROW_NUMBER () OVER (ORDER BY SUM(reacts) DESC)) pos,
+                AVG(reacts) spm,
+                MAX(reacts) best,
+                MIN(reacts) worst,
+                (SELECT COUNT(DISTINCT author_id) FROM board_messages WHERE emote = ?) users,
+                emote
+            FROM board_messages bm WHERE emote = ?
             GROUP BY author_id ORDER BY total DESC;
             """,
-            (board.id,),
+            (board_id,),
         ) as cur:
             async for row in cur:
-                yield row
+                yield RawBoardUser(self, *row)
 
-    # --> posted_board_messages
-    async def add_board_post(self, original: Message, post: Message):
-        await self.conn.execute(
-            "INSERT INTO posted_board_messages (message_id, board_message_id) VALUES(?, ?);",
-            (original.id, post.id),
-        )
-
-        await self.conn.commit()
-
-    async def get_board_post(
-        self, board: EmoteBoard, message: Message
-    ) -> Optional[Message]:
-        async with self.conn.execute(
-            "SELECT board_message_id FROM posted_board_messages WHERE message_id = ?;",
-            (message.id,),
-        ) as cur:
-            data = await cur.fetchone()
-
-            if data:
-                try:
-                    return await board.channel.fetch_message(data[0])
-                except:
-                    pass
-
-    async def find_board_post_by_id(self, original: Message) -> Optional[Message]:
+    async def get_boarduser_stats(
+        self, board_id: int, user_id: int
+    ) -> Optional[RawBoardUser]:
         async with self.conn.execute(
             """
-            SELECT b.channel_id, pbm.board_message_id
+            SELECT
+                bm.author_id,
+                SUM(reacts) total,
+                COUNT(message_id) msgs,
+                ranking.pos,
+                AVG(reacts) spm,
+                MAX(reacts) best,
+                MIN(reacts) worst,
+                (SELECT COUNT(DISTINCT author_id) FROM board_messages WHERE emote = :board_id) users,
+                emote
             FROM board_messages bm
-            JOIN boards b ON bm.emote = b.id
-            JOIN posted_board_messages pbm ON pbm.message_id = bm.message_id
-            WHERE bm.message_id = ?;
+            JOIN (
+                SELECT
+                    author_id,
+                    ROW_NUMBER () OVER (ORDER BY SUM(reacts) DESC) pos
+                    FROM board_messages
+                    WHERE emote = :board_id
+                    GROUP BY author_id
+                ) ranking
+                USING(author_id)
+            WHERE emote = :board_id AND author_id = :user_id
+            GROUP BY author_id ORDER BY total DESC;
             """,
-            (original.id,),
+            dict(board_id=board_id, user_id=user_id),
         ) as cur:
-            data = await cur.fetchone()
+            if data := await cur.fetchone():
+                return RawBoardUser(
+                    self,
+                    *data,
+                )
 
-            if data and (channel := original.guild.get_channel(data[0])):
-                try:
-                    return await channel.fetch_message(data[1])
-                except:
-                    pass
+    # => board posts
 
-    async def find_board_post_by_id_raw(
-        self, original_id: int
-    ) -> Optional[tuple[int, int]]:
+    async def get_board_post(self, post_id: int) -> Optional[RawPostMessage]:
         async with self.conn.execute(
             """
-            SELECT b.channel_id, pbm.board_message_id
-            FROM board_messages bm
-            JOIN boards b ON bm.emote = b.id
-            JOIN posted_board_messages pbm ON pbm.message_id = bm.message_id
-            WHERE bm.message_id = ?;
+            SELECT message_id, board_message_id
+            FROM posted_board_messages
+            WHERE board_message_id = ?;
             """,
-            (original_id,),
+            (post_id,),
         ) as cur:
-            data = await cur.fetchone()
+            if data := await cur.fetchone():
+                return RawPostMessage(self, *data)
 
-            if data:
-                return data[0], data[1]
+    async def get_board_post_for_message(
+        self, message_id: int
+    ) -> Optional[RawPostMessage]:
+        async with self.conn.execute(
+            """
+            SELECT message_id, board_message_id
+            FROM posted_board_messages
+            WHERE message_id = ?;
+            """,
+            (message_id,),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawPostMessage(self, *data)
 
-    # --> reaction roles
+    async def get_board_post_data(self, post_id: int) -> Optional[RawMessage]:
+        async with self.conn.execute(
+            """
+            SELECT pbm.board_message_id, b.channel_id, b.guild_id
+            FROM posted_board_messages pbm
+            JOIN board_messages bm USING(message_id)
+            JOIN boards b ON b.id = bm.emote
+            WHERE pbm.board_message_id = ?;
+            """,
+            (post_id,),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawMessage(*data)
+
+    async def add_board_post(self, original_id: int, post_id: int) -> RawPostMessage:
+        async with self.conn.execute(
+            """
+            INSERT INTO posted_board_messages (message_id, board_message_id)
+            VALUES(?, ?)
+            RETURNING message_id, board_message_id;
+            """,
+            (original_id, post_id),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawPostMessage(*data)
+
+        log.critical(f"[Add post failed] {message_id} -> {post_id}")
+        raise RuntimeError(f"Adding post {post_id} for {message_id} failed")
+
+    # => autoroles
+
     async def get_autorole(
-        self, guild: Guild, message: Message, emote: Emote
-    ) -> Optional[RawReactionRole]:
-        async with self.conn.execute(
-            "SELECT role_id, guild_id, channel_id, message_id, emote FROM autoroles WHERE guild_id = ? AND message_id = ? AND emote = ?;",
-            (guild.id, message.id, str(emote)),
-        ) as cur:
-            data = await cur.fetchone()
-
-            if data:
-                return RawReactionRole(*data)
-
-    # this probably should not attempt to resolve in this method
-    async def list_autoroles(self, guild: Guild):
-        async with self.conn.execute(
-            "SELECT role_id, guild_id, channel_id, message_id, emote FROM autoroles WHERE guild_id = ?;",
-            (guild.id,),
-        ) as cur:
-            async for row in cur:
-                yield RawReactionRole(*row)
-
-    async def add_autorole(
-        self, guild: Guild, message: Message, role: Role, react: Emote
-    ):
-        await self.conn.execute(
-            "INSERT INTO autoroles (role_id, guild_id, channel_id, message_id, emote) VALUES (?, ?, ?, ?, ?);",
-            (role.id, guild.id, message.channel.id, message.id, str(react)),
-        )
-
-        await self.conn.commit()
-
-    async def check_autorole_raw(
         self, guild_id: int, message_id: int, emote: Emote
-    ) -> bool:
+    ) -> Optional[RawAutorole]:
         async with self.conn.execute(
-            "SELECT true FROM autoroles WHERE guild_id = ? AND message_id = ? AND emote = ?;",
+            """
+            SELECT role_id, guild_id, channel_id, message_id, emote
+            FROM autoroles
+            WHERE guild_id = ? AND message_id = ? AND emote = ?;
+            """,
             (guild_id, message_id, str(emote)),
         ) as cur:
             if data := await cur.fetchone():
-                return True
+                return RawAutorole(self, *data)
 
-        return False
+    async def list_autoroles_for_guild(self, guild_id: int):
+        async with self.conn.execute(
+            """
+            SELECT role_id, guild_id, channel_id, message_id, emote
+            FROM autoroles
+            WHERE guild_id = ?;
+            """,
+            (guild_id,),
+        ) as cur:
+            async for row in cur:
+                yield RawAutorole(self, *row)
+
+    async def add_autorole(
+        self,
+        role_id: int,
+        guild_id: int,
+        channel_id: int,
+        message_id: int,
+        emote: Emote,
+    ) -> RawAutorole:
+        async with self.conn.execute(
+            """
+            INSERT INTO autoroles (role_id, guild_id, channel_id, message_id, emote)
+            VALUES(?, ?, ?, ?, ?)
+            RETURNING role_id, guild_id, channel_id, message_id, emote;
+            """,
+            (role_id, guild_id, channel_id, message_id, str(emote)),
+        ) as cur:
+            if data := await cur.fetchone():
+                return RawAutorole(self, *data)
+
+        log.critical(
+            f"[Add autorole failed] {guild_id}#{channel_id} {message_id} [{role_id}]"
+        )
+        raise RuntimeError(f"Adding autorole for {message_id} [{role_id}] failed")
